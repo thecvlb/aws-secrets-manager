@@ -1,8 +1,8 @@
 <?php
 
-namespace CVLB\Access;
+namespace CVLB\AccessManager;
 
-use CVLB\Access\Exception\AccessManagerException;
+use CVLB\AccessManager\Exception\AccessManagerException;
 use STS\Backoff\Backoff;
 
 abstract class AccessManager

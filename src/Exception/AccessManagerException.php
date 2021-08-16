@@ -1,6 +1,6 @@
 <?php
 
-namespace CVLB\Access\Exception;
+namespace CVLB\AccessManager\Exception;
 
 use \Exception;
 

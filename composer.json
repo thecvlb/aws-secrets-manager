@@ -9,7 +9,7 @@
     "license": "proprietary",
     "autoload": {
         "psr-4": {
-            "Thecvlb\\AwsSecretsManager\\": "src/"
+            "CVLB\\Access\\": "src"
         }
     },
     "minimum-stability": "stable"

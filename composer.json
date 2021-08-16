@@ -2,20 +2,14 @@
   "name": "vendor_name/aws-secrets-manager",
   "description": "Add AWS managed secrets to your project.",
   "minimum-stability": "stable",
-  "license": "proprietary",
-  "authors": [
-    {
-      "name": "michaelbarlund",
-      "email": "email@example.com"
-    }
-  ],
   "require": {
+    "php": ">=5.5",
     "aws/aws-sdk-php": "^3.190",
     "stechstudio/backoff": "^1.2"
   },
   "autoload": {
-    "psr-4": {
-      "Access\\": "src/"
+    "psr-0": {
+      "Access": "src/"
     }
   }
 }

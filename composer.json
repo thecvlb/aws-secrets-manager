@@ -1,15 +1,16 @@
 {
-  "name": "vendor_name/aws-secrets-manager",
-  "description": "Add AWS managed secrets to your project.",
-  "minimum-stability": "stable",
-  "require": {
-    "php": ">=5.5",
-    "aws/aws-sdk-php": "^3.190",
-    "stechstudio/backoff": "^1.2"
-  },
-  "autoload": {
-    "psr-0": {
-      "Access": "src/"
-    }
-  }
+    "name": "thecvlb/aws-secrets-manager",
+    "description": "Add AWS managed secrets to your project.",
+    "type": "library",
+    "require": {
+        "aws/aws-sdk-php": "^3.190",
+        "stechstudio/backoff": "^1.2"
+    },
+    "license": "proprietary",
+    "autoload": {
+        "psr-4": {
+            "Thecvlb\\AwsSecretsManager\\": "src/"
+        }
+    },
+    "minimum-stability": "stable"
 }

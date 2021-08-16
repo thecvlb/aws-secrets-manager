@@ -9,7 +9,7 @@
     "license": "proprietary",
     "autoload": {
         "psr-4": {
-            "CVLB\\Access\\": "src"
+            "CVLB\\AccessManager\\": "src/"
         }
     },
     "minimum-stability": "stable"

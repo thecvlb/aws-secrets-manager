@@ -2,7 +2,11 @@
 
 namespace CVLB\AccessManager;
 
+use Aws\Credentials\Credentials;
+use Aws\Exception\AwsException;
+use Aws\SecretsManager\SecretsManagerClient;
 use CVLB\AccessManager\Exception\AccessManagerException;
+use Exception;
 use STS\Backoff\Backoff;
 
 abstract class AccessManager
@@ -38,13 +42,19 @@ abstract class AccessManager
     private $backoff;
 
     /**
-     * @param array $config - expecting keys: aws_key, aws_secret, and encryption_key 
+     * @var bool
+     */
+    protected $useCache = true;
+
+    /**
+     * @param array $config - expecting keys: aws_key, aws_secret, encryption_key, and optionally, use_cache
      */
     public function __construct(array $config)
     {
         $this->setAwsKey($config['aws_key']);
         $this->setAwsSecret($config['aws_secret']);
         $this->setEncryptionKey($config['encryption_key']);
+        $this->setUseCache($config['use_cache'] ?? true); // default to true
         
         // Init the backoff object
         $this->setBackoff();
@@ -59,24 +69,11 @@ abstract class AccessManager
     }
 
     /**
-     * @return string
-     */
-    private function getAwsKey(): string
-    {
-        return $this->awsKey;
-    }
-
-    /**
      * @param string $string
      */
     private function setAwsSecret(string $string): void
     {
         $this->awsSecret = $string;
-    }
-
-    private function getAwsSecret(): string
-    {
-        return $this->awsSecret;
     }
 
     /**
@@ -88,11 +85,19 @@ abstract class AccessManager
     }
 
     /**
-     * @return string
+     * @param bool $bool
      */
-    private function getEncryptionKey(): string
+    private function setUseCache(bool $bool): void
     {
-        return $this->encryptionKey;
+        $this->useCache = $bool;
+    }
+
+    /**
+     * @return bool
+     */
+    public function getUseCache(): bool
+    {
+        return $this->useCache;
     }
 
     /**
@@ -124,53 +129,41 @@ abstract class AccessManager
 
                 // Decode the json
                 $value = json_decode($value, true);
-            } catch (\Exception $e) {
-                // Log and notify
-                $this->publishToSns();
+
+            } catch (Exception $e) {
                 throw new AccessManagerException($e->getMessage());
             }
         }
         
-        //If no value found, log and notify
-        if (!$value) {
-            $this->publishToSns();
+        //If no value found
+        if (!$value)
             throw new AccessManagerException("Unable to find value for [$secretName]");
-        }
 
-        if (!isset($value[$key])) {
-            // Log and notify
-            $this->publishToSns();
+        // Key not found
+        if (!isset($value[$key]))
             throw new AccessManagerException("Key [$key] not found in the value for [$secretName]");
-        }
         
         return $value[$key];
     }
 
     /**
-     * Get vale from cache for the given $key
-     * @param string $key
+     * Get value from cache for the given $secretName
+     * @param string $secretName
      * @return string|null
-     * @throws \Exception
      */
-    protected function fromCache(string $key): ?string
+    protected function fromCache(string $secretName): ?string
     {
+        if ($this->useCache === false)
+            return null;
+
         // Fetch from implemented cache service
-        $value = $this->fetchFromCache($key);
+        $value = $this->fetchFromCache($secretName);
         
         if (!$value)
             return null;
         
         // decrypt the cached value
-        $unencryptedValue = $this->decryptValue($value);
-        
-        if ($unencryptedValue) {
-            // return it
-            return $unencryptedValue;
-        }
-        else {
-            // unable to decrypt so get from SecretsManager
-            return $this->fromSource($key);
-        }
+        return $this->decryptValue($value);
     }
 
     /**
@@ -197,26 +190,22 @@ abstract class AccessManager
 
     /**
      * Get value from SecretsManager service for given $key
-     * @param string $key
+     * @param string $secretName
      * @return string|null
-     * @throws \Exception
+     * @throws Exception
      */
-    protected function fromSource(string $key): ?string
+    protected function fromSource(string $secretName): ?string
     {
-        try {
-            $value = $this->fetchFromSource($key);
+        $value = $this->fetchFromSource($secretName);
 
-            if (!$value)
-                return null;
-        } catch (\Exception $e) {
-            throw $e;
-        }
+        if (!$value)
+            return null;
         
         // Encrypt value for storage
         $encryptedValue = $this->encryptValue($value);
         
         // Add to cache
-        $this->storeToCache($key, $encryptedValue);
+        $this->storeToCache($secretName, $encryptedValue);
         
         return $value;
     }
@@ -225,15 +214,15 @@ abstract class AccessManager
      * Get secret from SecretsManager
      * @param string $secretName
      * @return string|null
-     * @throws \Exception
+     * @throws Exception
      */
     protected function fetchFromSource(string $secretName): ?string
     {
         // ToDo: move to Instance Role
-        $credentials = new \Aws\Credentials\Credentials($this->awsKey, $this->awsSecret);
+        $credentials = new Credentials($this->awsKey, $this->awsSecret);
         
         // Init the AWS client
-        $client = new \Aws\SecretsManager\SecretsManagerClient([
+        $client = new SecretsManagerClient([
             'version' => '2017-10-17',
             'region' => 'us-west-2',
             'credentials' => $credentials
@@ -245,7 +234,7 @@ abstract class AccessManager
                 'SecretId' => $secretName,
             ]);
 
-        } catch (\Aws\Exception\AwsException $e) {
+        } catch (AwsException $e) {
             $error = $e->getAwsErrorCode();
             if ($error == 'DecryptionFailureException') {
                 // Secrets Manager can't decrypt the protected secret text using the provided AWS KMS key.
@@ -275,7 +264,7 @@ abstract class AccessManager
 
             throw $e;
             
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             throw $e;
         }
         // Decrypts secret using the associated KMS CMK.
@@ -304,7 +293,7 @@ abstract class AccessManager
         
         // Do encryption
         $encrypted = openssl_encrypt($value, $this->openSslCipherAlgo, $this->encryptionKey, 0, $iv,$tag);
-        
+
         if ($encrypted) {
             // encode the iv, and tag with the encrypted text, they are both required for decryption           
             return base64_encode($iv . $encrypted . $tag);
@@ -336,12 +325,5 @@ abstract class AccessManager
         $encryptedValue = substr($encrypted, $iv_length, -16);
         
         return openssl_decrypt($encryptedValue, $this->openSslCipherAlgo, $this->encryptionKey, 0, $iv, $authTag);
-    }
-    
-    private function publishToSns()
-    {
-        /*
-         * ToDo: accept an array of SNS topics => message pairs, and publish message(s) to topic(s)
-         */
     }
 }

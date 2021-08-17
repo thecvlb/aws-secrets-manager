@@ -112,15 +112,18 @@ abstract class AccessManager
      */
     public function access(string $secretName, string $key): string
     {
-        // Look for it in cache first
-        $value = $this->fromCache($secretName);
+        // Look for it in cache first and decode
+        $value = json_decode($this->fromCache($secretName), true);
 
-        if (!$value) {
+        if (!$value || !isset($value[$key])) {
             try {
                 // If not found in cache, get from SecretsManager
                 $value = $this->backoff->run(function() use($secretName) {
                     return $this->fromSource($secretName);
                 });
+
+                // Decode the json
+                $value = json_decode($value, true);
             } catch (\Exception $e) {
                 // Log and notify
                 $this->publishToSns();
@@ -133,9 +136,6 @@ abstract class AccessManager
             $this->publishToSns();
             throw new AccessManagerException("Unable to find value for [$secretName]");
         }
-        
-        // Decode the json
-        $value = json_decode($value, true);
 
         if (!isset($value[$key])) {
             // Log and notify

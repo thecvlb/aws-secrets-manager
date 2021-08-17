@@ -2,24 +2,25 @@
 
 namespace CVLB\AccessManager;
 
+use Aws\CloudWatchLogs\CloudWatchLogsClient;
 use Aws\Credentials\Credentials;
 use Aws\Exception\AwsException;
 use Aws\SecretsManager\SecretsManagerClient;
 use CVLB\AccessManager\Exception\AccessManagerException;
 use Exception;
+use Maxbanton\Cwh\Handler\CloudWatch;
+use Monolog\Logger;
+use Monolog\Formatter\LineFormatter;
+use Monolog\Handler\StreamHandler;
+use Monolog\Handler\SyslogHandler;
 use STS\Backoff\Backoff;
 
 abstract class AccessManager
 {
     /**
-     * @var string 
+     * @var Credentials
      */
-    private $awsKey;
-
-    /**
-     * @var string
-     */
-    private $awsSecret;
+    private $credentials;
 
     /**
      * @var int
@@ -51,8 +52,7 @@ abstract class AccessManager
      */
     public function __construct(array $config)
     {
-        $this->setAwsKey($config['aws_key']);
-        $this->setAwsSecret($config['aws_secret']);
+        $this->setCredentials($config['aws_key'], $config['aws_secret']);
         $this->setEncryptionKey($config['encryption_key']);
         $this->setUseCache($config['use_cache'] ?? true); // default to true
         
@@ -60,20 +60,10 @@ abstract class AccessManager
         $this->setBackoff();
     }
 
-    /**
-     * @param string $string
-     */
-    private function setAwsKey(string $string): void
+    private function setCredentials(string $awsKey, string $awsSecret): void
     {
-        $this->awsKey = $string;
-    }
-
-    /**
-     * @param string $string
-     */
-    private function setAwsSecret(string $string): void
-    {
-        $this->awsSecret = $string;
+        // ToDo: move to Instance Role
+        $this->credentials = new Credentials($awsKey, $awsSecret);
     }
 
     /**
@@ -130,18 +120,21 @@ abstract class AccessManager
                 // Decode the json
                 $value = json_decode($value, true);
 
+                //If no value found
+                if (!$value)
+                    throw new AccessManagerException("Unable to find value for [$secretName]");
+
+                // Key not found
+                if (!isset($value[$key]))
+                    throw new AccessManagerException("Key [$key] not found in the value for [$secretName]");
+
             } catch (Exception $e) {
                 throw new AccessManagerException($e->getMessage());
             }
         }
-        
-        //If no value found
-        if (!$value)
-            throw new AccessManagerException("Unable to find value for [$secretName]");
 
-        // Key not found
-        if (!isset($value[$key]))
-            throw new AccessManagerException("Key [$key] not found in the value for [$secretName]");
+        // Log access
+        $this->logAccess();
         
         return $value[$key];
     }
@@ -153,6 +146,7 @@ abstract class AccessManager
      */
     protected function fromCache(string $secretName): ?string
     {
+        // Bypass if not using cache
         if ($this->useCache === false)
             return null;
 
@@ -218,14 +212,11 @@ abstract class AccessManager
      */
     protected function fetchFromSource(string $secretName): ?string
     {
-        // ToDo: move to Instance Role
-        $credentials = new Credentials($this->awsKey, $this->awsSecret);
-        
         // Init the AWS client
         $client = new SecretsManagerClient([
             'version' => '2017-10-17',
             'region' => 'us-west-2',
-            'credentials' => $credentials
+            'credentials' => $this->credentials
         ]);
 
         try {
@@ -325,5 +316,57 @@ abstract class AccessManager
         $encryptedValue = substr($encrypted, $iv_length, -16);
         
         return openssl_decrypt($encryptedValue, $this->openSslCipherAlgo, $this->encryptionKey, 0, $iv, $authTag);
+    }
+
+    protected function logAccess()
+    {
+        $logFile = "testapp_local.log";
+        $appName = "TestApp01";
+        $facility = "local0";
+
+        $cwClient = new CloudWatchLogsClient([
+            'version' => '2010-08-01',
+            'region' => 'us-west-2',
+            'credentials' => $this->credentials
+        ]);
+
+        // Log group name, will be created if none
+        $cwGroupName = 'aws-cloudtrail-logs-202108171424';
+        // Log stream name, will be created if none
+        $cwStreamNameInstance = '873061768430_CloudTrail_us-west-2';
+        // Instance ID as log stream name
+        $cwStreamNameApp = "AccessManager";
+        // Days to keep logs, 14 by default
+        $cwRetentionDays = 90;
+
+        $cwHandlerInstanceNotice = new CloudWatch($cwClient, $cwGroupName, $cwStreamNameInstance, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::NOTICE);
+        $cwHandlerInstanceError = new CloudWatch($cwClient, $cwGroupName, $cwStreamNameInstance, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::ERROR);
+        $cwHandlerAppNotice = new CloudWatch($cwClient, $cwGroupName, $cwStreamNameApp, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::NOTICE);
+
+        $logger = new Logger('AccessManager Logging');
+
+        $formatter = new LineFormatter(null, null, false, true);
+        $syslogFormatter = new LineFormatter("%channel%: %level_name%: %message% %context% %extra%",null,false,true);
+        $infoHandler = new StreamHandler(__DIR__."/".$logFile, Logger::INFO);
+        $infoHandler->setFormatter($formatter);
+
+        $warnHandler = new SyslogHandler($appName, $facility, Logger::WARNING);
+        $warnHandler->setFormatter($syslogFormatter);
+
+        $cwHandlerInstanceNotice->setFormatter($formatter);
+        $cwHandlerInstanceError->setFormatter($formatter);
+        $cwHandlerAppNotice->setFormatter($formatter);
+
+        $logger->pushHandler($warnHandler);
+        $logger->pushHandler($infoHandler);
+        $logger->pushHandler($cwHandlerInstanceNotice);
+        $logger->pushHandler($cwHandlerInstanceError);
+        $logger->pushHandler($cwHandlerAppNotice);
+
+        $logger->info('Initial test of application logging.');
+        $logger->warn('Test of the warning system logging.');
+        $logger->notice('Application Auth Event: ',[ 'function'=>'login-action','result'=>'login-success' ]);
+        $logger->notice('Application Auth Event: ',[ 'function'=>'login-action','result'=>'login-failure' ]);
+        $logger->error('Application ERROR: System Error');
     }
 }

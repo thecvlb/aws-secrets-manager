@@ -5,6 +5,8 @@
         "aws/aws-sdk-php": "^3.190",
         "ext-json": "*",
         "ext-openssl": "*",
+        "maxbanton/cwh": "^2.0",
+        "monolog/monolog": "^2.3",
         "stechstudio/backoff": "^1.2"
     },
     "require-dev": {

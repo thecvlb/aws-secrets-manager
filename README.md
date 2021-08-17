@@ -2,6 +2,10 @@
 
 Add AWS managed secrets to your project.
 
+Retrieved secrets are stored in a local cache service that must be defined by an extending class. The secrets are encrypted with the `AES-256-GCM` cipher and a provided encryption key before being sent to the cache service, and decrypted when accessed.
+
+The AWS credentials must have at a minimum `secretsmanager:GetSecretValue` access. 
+
 ## Installation
 
 Installation via [Composer](https://getcomposer.org/). First, add the repository to your `composer.json` file:
@@ -15,7 +19,7 @@ Installation via [Composer](https://getcomposer.org/). First, add the repository
     ]
 ```
 
-And add the package to your `requirements`
+And add the package to your `requirements`:
 ```bash
 "thecvlb/aws-secrets-manager": "1.*"
 ```

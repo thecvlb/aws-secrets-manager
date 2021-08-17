@@ -3,6 +3,8 @@
     "description": "Add AWS managed secrets to your project.",
     "require": {
         "aws/aws-sdk-php": "^3.190",
+        "ext-json": "*",
+        "ext-openssl": "*",
         "stechstudio/backoff": "^1.2"
     },
     "require-dev": {

@@ -22,7 +22,7 @@ And add the package to your `requirements`
 
 ## Usage
 
-You must extend the abstract `AccessManager` class to define the caching methods used by your application. Using the extending class, invoke the `access()` method to retrieve a secret:
+You must extend the abstract `AccessManager` class to define the caching methods used by your application. Then, using the extending class, invoke the `access()` method to retrieve a secret:
 
 ```bash
 $redisAccessManager = new \RedisAccessManager(
@@ -30,11 +30,10 @@ $redisAccessManager = new \RedisAccessManager(
         'aws_key' => $_ENV['AWS_KEY'],
         'aws_secret' => $_ENV['AWS_SECRET'],
         'encryption_key' => $_ENV['ENCRYPTION_KEY'],
-    ], 
-    $_ENV['REDIS_HOST']
+    ]
 );
 ```
-The `access()` method requires the `AWS SecretName` and the `key`:
+The `access()` method requires an `AWS SecretName` and the `key`:
 ```bash
 $db_password = $redisAccessManager->access($_ENV['DB_SECRET_NAME'], 'password');
 ```

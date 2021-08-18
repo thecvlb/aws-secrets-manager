@@ -323,6 +323,37 @@ abstract class AccessManager
     {
         $logParams = array_merge($params, $this->logParams());
 
+        $sdkParams = $config["sdk"] ?? [
+                'version' => 'latest',
+                'region' => 'us-west-2',
+                'credentials' => $this->credentials
+            ];
+        $tags = $config["tags"] ?? [ ];
+        $name = $config["name"] ?? 'cloudwatch';
+        $retention = $config["retention"] ?? 14;
+
+        // Instantiate AWS SDK CloudWatch Logs Client
+        $client = new CloudWatchLogsClient($sdkParams);
+
+        // Log group name, will be created if none
+        $groupName = 'aws-cloudtrail-logs-202108171424';
+
+        // Log stream name, will be created if none
+        $streamName = 'AccessManager';
+
+        // Days to keep logs, 14 by default. Set to `null` to allow indefinite retention.
+        $retentionDays = $retention;
+
+        // Instantiate handler (tags are optional)
+        $handler = new CloudWatch($client, $groupName, $streamName, $retentionDays, 10000, $tags);
+
+        // Create a log channel
+        $logger = new Logger($name);
+        // Set handler
+        $logger->pushHandler($handler);
+
+        //return $logger;
+/*
         $logFile = "testapp_local.log";
         $appName = "TestApp01";
         $facility = "local0";
@@ -342,9 +373,9 @@ abstract class AccessManager
         // Days to keep logs, 14 by default
         $cwRetentionDays = 90;
 
-        $cwHandlerInstanceNotice = new CloudWatch($cwClient, $cwGroupName, $cwStreamNameInstance, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::NOTICE);
-        $cwHandlerInstanceError = new CloudWatch($cwClient, $cwGroupName, $cwStreamNameInstance, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::ERROR);
-        $cwHandlerAppNotice = new CloudWatch($cwClient, $cwGroupName, $cwStreamNameApp, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::NOTICE);
+        $cwHandlerInstanceNotice =  new CloudWatch($cwClient, $cwGroupName, $cwStreamNameInstance, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::NOTICE);
+        $cwHandlerInstanceError =   new CloudWatch($cwClient, $cwGroupName, $cwStreamNameInstance, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::ERROR);
+        $cwHandlerAppNotice =       new CloudWatch($cwClient, $cwGroupName, $cwStreamNameApp, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::NOTICE);
 
         $logger = new Logger('AccessManager Logging');
 
@@ -371,8 +402,9 @@ abstract class AccessManager
 //        $logger->notice('Application Auth Event: ',[ 'function'=>'login-action','result'=>'login-success' ]);
 //        $logger->notice('Application Auth Event: ',[ 'function'=>'login-action','result'=>'login-failure' ]);
 //        $logger->error('Application ERROR: System Error');
+*/
          $logger->notice('AccessManager Event: ', $logParams);
-         var_dump($logParams);
+
     }
 
     /**

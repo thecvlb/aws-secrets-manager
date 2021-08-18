@@ -124,14 +124,14 @@ abstract class AccessManager
      */
     public function access(string $secretName, string $key): string
     {
-        $accessFromCache = $this->useCache;
+        $message ='Secret Accessed from Cache';
 
         // Look for it in cache first and decode
         $value = json_decode($this->fromCache($secretName), true);
 
         if (!$value || !isset($value[$key])) {
 
-            $accessFromCache = false;
+            $message = 'Secret Accessed from AWS';
 
             try {
                 // If not found in cache, get from SecretsManager
@@ -164,7 +164,7 @@ abstract class AccessManager
         }
 
         // Log access
-        $this->logAccess(Logger::INFO, 'Secret Accessed' . $accessFromCache ? ' from Cache' : ' from AWS', ['secret' => $secretName, 'key' => $key]);
+        $this->logAccess(Logger::INFO, $message, ['secret' => $secretName, 'key' => $key]);
         
         return $value[$key];
     }

@@ -122,27 +122,27 @@ abstract class AccessManager
 
                 //If no value found
                 if (!$value) {
-                    $this->log(__FILE__. ':'.__LINE__."|Unable to find value for [$secretName]");
+                    $this->logAccess(['message' => __FILE__. ':'.__LINE__."|Unable to find value for [$secretName]"]);
                     $this->notify(__FILE__. ':'.__LINE__."|Unable to find value for [$secretName]");
                     throw new AccessManagerException(__FILE__. ':'.__LINE__."|Unable to find value for [$secretName]");
                 }
 
                 // Key not found
                 if (!isset($value[$key])) {
-                    $this->log(__FILE__. ':'.__LINE__."|Key [$key] not found in the value for [$secretName]");
+                    $this->logAccess(['message' => __FILE__. ':'.__LINE__."|Key [$key] not found in the value for [$secretName]"]);
                     $this->notify(__FILE__. ':'.__LINE__."|Key [$key] not found in the value for [$secretName]");
                     throw new AccessManagerException(__FILE__. ':'.__LINE__."|Key [$key] not found in the value for [$secretName]");
                 }
 
             } catch (Exception $e) {
-                $this->log($e->getTraceAsString());
+                $this->logAccess($e->getTraceAsString());
                 $this->notify($e->getTraceAsString());
                 throw new AccessManagerException($e->getMessage());
             }
         }
 
         // Log access
-        $this->log("AccessManager:" . json_encode(['secret' => $secretName, 'key' => $key]));
+        $this->logAccess(['secret' => $secretName, 'key' => $key]);
         
         return $value[$key];
     }
@@ -216,48 +216,49 @@ abstract class AccessManager
             if ($error == 'DecryptionFailureException') {
                 // Secrets Manager can't decrypt the protected secret text using the provided AWS KMS key.
                 // Handle the exception here, and/or rethrow as needed.
-                $this->log($e->getTraceAsString());
+                $this->logAccess(['message' => $e->getTraceAsString()]);
                 $this->notify($e->getTraceAsString());
                 throw $e;
             }
             if ($error == 'InternalServiceErrorException') {
                 // An error occurred on the server side.
                 // Handle the exception here, and/or rethrow as needed.
-                $this->log($e->getTraceAsString());
+                $this->logAccess(['message' => $e->getTraceAsString()]);
                 $this->notify($e->getTraceAsString());
                 throw $e;
             }
             if ($error == 'InvalidParameterException') {
                 // You provided an invalid value for a parameter.
                 // Handle the exception here, and/or rethrow as needed.
-                $this->log($e->getTraceAsString());
+                $this->logAccess(['message' => $e->getTraceAsString()]);
                 $this->notify($e->getTraceAsString());
                 throw $e;
             }
             if ($error == 'InvalidRequestException') {
                 // You provided a parameter value that is not valid for the current state of the resource.
                 // Handle the exception here, and/or rethrow as needed.
-                $this->log($e->getTraceAsString());
+                $this->logAccess(['message' => $e->getTraceAsString()]);
                 $this->notify($e->getTraceAsString());
                 throw $e;
             }
             if ($error == 'ResourceNotFoundException') {
                 // We can't find the resource that you asked for.
                 // Handle the exception here, and/or rethrow as needed.
-                $this->log($e->getTraceAsString());
+                $this->logAccess(['message' => $e->getTraceAsString()]);
                 $this->notify($e->getTraceAsString());
                 throw $e;
             }
 
-            $this->log($e->getTraceAsString());
+            $this->logAccess(['message' => $e->getTraceAsString()]);
             $this->notify($e->getTraceAsString());
             throw $e;
             
         } catch (Exception $e) {
-            $this->log($e->getTraceAsString());
+            $this->logAccess(['message' => $e->getTraceAsString()]);
             $this->notify($e->getTraceAsString());
             throw $e;
         }
+
         // Decrypts secret using the associated KMS CMK.
         // Depending on whether the secret is a string or binary, one of these fields will be populated.
         if (isset($result['SecretString'])) {
@@ -318,6 +319,62 @@ abstract class AccessManager
         return openssl_decrypt($encryptedValue, $this->openSslCipherAlgo, $this->encryptionKey, 0, $iv, $authTag);
     }
 
+    protected function logAccess(array $params)
+    {
+        $logParams = array_merge($params, $this->logParams());
+
+        $logFile = "testapp_local.log";
+        $appName = "TestApp01";
+        $facility = "local0";
+
+        $cwClient = new CloudWatchLogsClient([
+            'version' => 'latest',
+            'region' => 'us-west-2',
+            'credentials' => $this->credentials
+        ]);
+
+        // Log group name, will be created if none
+        $cwGroupName = 'aws-cloudtrail-logs-202108171424';
+        // Log stream name, will be created if none
+        $cwStreamNameInstance = '873061768430_CloudTrail_us-west-2';
+        // Instance ID as log stream name
+        $cwStreamNameApp = "AccessManager";
+        // Days to keep logs, 14 by default
+        $cwRetentionDays = 90;
+
+        $cwHandlerInstanceNotice = new CloudWatch($cwClient, $cwGroupName, $cwStreamNameInstance, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::NOTICE);
+        $cwHandlerInstanceError = new CloudWatch($cwClient, $cwGroupName, $cwStreamNameInstance, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::ERROR);
+        $cwHandlerAppNotice = new CloudWatch($cwClient, $cwGroupName, $cwStreamNameApp, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::NOTICE);
+
+        $logger = new Logger('AccessManager Logging');
+
+        $formatter = new LineFormatter(null, null, false, true);
+        $syslogFormatter = new LineFormatter("%channel%: %level_name%: %message% %context% %extra%",null,false,true);
+        $infoHandler = new StreamHandler(__DIR__."/".$logFile, Logger::INFO);
+        $infoHandler->setFormatter($formatter);
+
+        $warnHandler = new SyslogHandler($appName, $facility, Logger::WARNING);
+        $warnHandler->setFormatter($syslogFormatter);
+
+        $cwHandlerInstanceNotice->setFormatter($formatter);
+        $cwHandlerInstanceError->setFormatter($formatter);
+        $cwHandlerAppNotice->setFormatter($formatter);
+
+        $logger->pushHandler($warnHandler);
+        $logger->pushHandler($infoHandler);
+        $logger->pushHandler($cwHandlerInstanceNotice);
+        $logger->pushHandler($cwHandlerInstanceError);
+        $logger->pushHandler($cwHandlerAppNotice);
+
+//        $logger->info('Initial test of application logging.');
+//        $logger->warn('Test of the warning system logging.');
+//        $logger->notice('Application Auth Event: ',[ 'function'=>'login-action','result'=>'login-success' ]);
+//        $logger->notice('Application Auth Event: ',[ 'function'=>'login-action','result'=>'login-failure' ]);
+//        $logger->error('Application ERROR: System Error');
+         $logger->notice('AccessManager Event: ', $logParams);
+         var_dump($logParams);
+    }
+
     /**
      * Define extraction from cache service in extending class
      * @param string $key
@@ -341,14 +398,14 @@ abstract class AccessManager
     abstract protected function clearFromCache(array $keys): int;
 
     /**
-     * Define logging service to be used
-     * @param string $message
-     * @return bool
+     * Define method to return additional params to be added to log
+     * e.g. user_id, username, etc
+     * @return array
      */
-    abstract function log(string $message): bool;
+    abstract protected function logParams(): array;
 
     /**
-     * Definbe notification service to be used
+     * Define notification service to be used
      * @param string $message
      * @return bool
      */

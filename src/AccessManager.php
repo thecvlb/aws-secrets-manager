@@ -7,6 +7,7 @@ use Aws\Credentials\Credentials;
 use Aws\Exception\AwsException;
 use Aws\SecretsManager\SecretsManagerClient;
 use CVLB\AccessManager\Exception\AccessManagerException;
+use CVLB\AccessManager\Factories\CloudWatchLoggerFactory;
 use Exception;
 use Maxbanton\Cwh\Handler\CloudWatch;
 use Monolog\Logger;
@@ -47,6 +48,8 @@ abstract class AccessManager
      */
     protected $useCache = true;
 
+    private $logger;
+
     /**
      * @param array $config - expecting keys: aws_key, aws_secret, encryption_key, and optionally, use_cache
      */
@@ -58,6 +61,9 @@ abstract class AccessManager
         
         // Init the backoff object
         $this->setBackoff();
+
+        // Init the logger
+        $this->setLogger();
     }
 
     private function setCredentials(string $awsKey, string $awsSecret): void
@@ -96,6 +102,22 @@ abstract class AccessManager
     private function setBackoff(): void
     {
         $this->backoff = new Backoff($this->maxRetryAttempts, 'exponential', null, true);
+    }
+
+    private function setLogger(): void
+    {
+        $cloudwatchConfig = [
+            'sdk' => [
+                'version' => 'latest',
+                'region' => 'us-west-2',
+                'credentials' => $this->credentials
+            ],
+            'name' => 'AccessManagerLogger',
+            'cloudwatch_group' => 'aws-cloudtrail-logs-202108171424',
+            'retention' => 14
+        ];
+        $logger = new CloudWatchLoggerFactory();
+        $this->logger = $logger($cloudwatchConfig);
     }
 
     /**
@@ -323,88 +345,7 @@ abstract class AccessManager
     {
         $logParams = array_merge($params, $this->logParams());
 
-        $sdkParams = $config["sdk"] ?? [
-                'version' => 'latest',
-                'region' => 'us-west-2',
-                'credentials' => $this->credentials
-            ];
-        $tags = $config["tags"] ?? [ ];
-        $name = $config["name"] ?? 'cloudwatch';
-        $retention = $config["retention"] ?? 14;
-
-        // Instantiate AWS SDK CloudWatch Logs Client
-        $client = new CloudWatchLogsClient($sdkParams);
-
-        // Log group name, will be created if none
-        $groupName = 'aws-cloudtrail-logs-202108171424';
-
-        // Log stream name, will be created if none
-        $streamName = 'AccessManager';
-
-        // Days to keep logs, 14 by default. Set to `null` to allow indefinite retention.
-        $retentionDays = $retention;
-
-        // Instantiate handler (tags are optional)
-        $handler = new CloudWatch($client, $groupName, $streamName, $retentionDays, 10000, $tags);
-
-        // Create a log channel
-        $logger = new Logger($name);
-        // Set handler
-        $logger->pushHandler($handler);
-
-        //return $logger;
-/*
-        $logFile = "testapp_local.log";
-        $appName = "TestApp01";
-        $facility = "local0";
-
-        $cwClient = new CloudWatchLogsClient([
-            'version' => 'latest',
-            'region' => 'us-west-2',
-            'credentials' => $this->credentials
-        ]);
-
-        // Log group name, will be created if none
-        $cwGroupName = 'aws-cloudtrail-logs-202108171424';
-        // Log stream name, will be created if none
-        $cwStreamNameInstance = '873061768430_CloudTrail_us-west-2';
-        // Instance ID as log stream name
-        $cwStreamNameApp = "AccessManager";
-        // Days to keep logs, 14 by default
-        $cwRetentionDays = 90;
-
-        $cwHandlerInstanceNotice =  new CloudWatch($cwClient, $cwGroupName, $cwStreamNameInstance, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::NOTICE);
-        $cwHandlerInstanceError =   new CloudWatch($cwClient, $cwGroupName, $cwStreamNameInstance, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::ERROR);
-        $cwHandlerAppNotice =       new CloudWatch($cwClient, $cwGroupName, $cwStreamNameApp, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::NOTICE);
-
-        $logger = new Logger('AccessManager Logging');
-
-        $formatter = new LineFormatter(null, null, false, true);
-        $syslogFormatter = new LineFormatter("%channel%: %level_name%: %message% %context% %extra%",null,false,true);
-        $infoHandler = new StreamHandler(__DIR__."/".$logFile, Logger::INFO);
-        $infoHandler->setFormatter($formatter);
-
-        $warnHandler = new SyslogHandler($appName, $facility, Logger::WARNING);
-        $warnHandler->setFormatter($syslogFormatter);
-
-        $cwHandlerInstanceNotice->setFormatter($formatter);
-        $cwHandlerInstanceError->setFormatter($formatter);
-        $cwHandlerAppNotice->setFormatter($formatter);
-
-        $logger->pushHandler($warnHandler);
-        $logger->pushHandler($infoHandler);
-        $logger->pushHandler($cwHandlerInstanceNotice);
-        $logger->pushHandler($cwHandlerInstanceError);
-        $logger->pushHandler($cwHandlerAppNotice);
-
-//        $logger->info('Initial test of application logging.');
-//        $logger->warn('Test of the warning system logging.');
-//        $logger->notice('Application Auth Event: ',[ 'function'=>'login-action','result'=>'login-success' ]);
-//        $logger->notice('Application Auth Event: ',[ 'function'=>'login-action','result'=>'login-failure' ]);
-//        $logger->error('Application ERROR: System Error');
-*/
-         $logger->notice('AccessManager Event: ', $logParams);
-
+        $this->logger->notice('AccessManager Event: ', $logParams);
     }
 
     /**

@@ -121,20 +121,28 @@ abstract class AccessManager
                 $value = json_decode($value, true);
 
                 //If no value found
-                if (!$value)
-                    throw new AccessManagerException("Unable to find value for [$secretName]");
+                if (!$value) {
+                    $this->log(__FILE__. ':'.__LINE__."|Unable to find value for [$secretName]");
+                    $this->notify(__FILE__. ':'.__LINE__."|Unable to find value for [$secretName]");
+                    throw new AccessManagerException(__FILE__. ':'.__LINE__."|Unable to find value for [$secretName]");
+                }
 
                 // Key not found
-                if (!isset($value[$key]))
-                    throw new AccessManagerException("Key [$key] not found in the value for [$secretName]");
+                if (!isset($value[$key])) {
+                    $this->log(__FILE__. ':'.__LINE__."|Key [$key] not found in the value for [$secretName]");
+                    $this->notify(__FILE__. ':'.__LINE__."|Key [$key] not found in the value for [$secretName]");
+                    throw new AccessManagerException(__FILE__. ':'.__LINE__."|Key [$key] not found in the value for [$secretName]");
+                }
 
             } catch (Exception $e) {
+                $this->log($e->getTraceAsString());
+                $this->notify($e->getTraceAsString());
                 throw new AccessManagerException($e->getMessage());
             }
         }
 
         // Log access
-        $this->logAccess();
+        $this->log("AccessManager:" . json_encode(['secret' => $secretName, 'key' => $key]));
         
         return $value[$key];
     }
@@ -159,28 +167,6 @@ abstract class AccessManager
         // decrypt the cached value
         return $this->decryptValue($value);
     }
-
-    /**
-     * Define extraction from cache service in extending class
-     * @param string $key
-     * @return string|null
-     */
-    abstract protected function fetchFromCache(string $key): ?string;
-
-    /**
-     * Define storage into cache service in extending class
-     * @param string $key
-     * @param string $value
-     * @return bool|null
-     */
-    abstract protected function storeToCache(string $key, string $value): ?bool;
-
-    /**
-     * Define clearing of key(s) from cache service in extending class
-     * @param array $keys
-     * @return int|null
-     */
-    abstract protected function clearFromCache(array $keys): int;
 
     /**
      * Get value from SecretsManager service for given $key
@@ -230,32 +216,46 @@ abstract class AccessManager
             if ($error == 'DecryptionFailureException') {
                 // Secrets Manager can't decrypt the protected secret text using the provided AWS KMS key.
                 // Handle the exception here, and/or rethrow as needed.
+                $this->log($e->getTraceAsString());
+                $this->notify($e->getTraceAsString());
                 throw $e;
             }
             if ($error == 'InternalServiceErrorException') {
                 // An error occurred on the server side.
                 // Handle the exception here, and/or rethrow as needed.
+                $this->log($e->getTraceAsString());
+                $this->notify($e->getTraceAsString());
                 throw $e;
             }
             if ($error == 'InvalidParameterException') {
                 // You provided an invalid value for a parameter.
                 // Handle the exception here, and/or rethrow as needed.
+                $this->log($e->getTraceAsString());
+                $this->notify($e->getTraceAsString());
                 throw $e;
             }
             if ($error == 'InvalidRequestException') {
                 // You provided a parameter value that is not valid for the current state of the resource.
                 // Handle the exception here, and/or rethrow as needed.
+                $this->log($e->getTraceAsString());
+                $this->notify($e->getTraceAsString());
                 throw $e;
             }
             if ($error == 'ResourceNotFoundException') {
                 // We can't find the resource that you asked for.
                 // Handle the exception here, and/or rethrow as needed.
+                $this->log($e->getTraceAsString());
+                $this->notify($e->getTraceAsString());
                 throw $e;
             }
 
+            $this->log($e->getTraceAsString());
+            $this->notify($e->getTraceAsString());
             throw $e;
             
         } catch (Exception $e) {
+            $this->log($e->getTraceAsString());
+            $this->notify($e->getTraceAsString());
             throw $e;
         }
         // Decrypts secret using the associated KMS CMK.
@@ -318,55 +318,39 @@ abstract class AccessManager
         return openssl_decrypt($encryptedValue, $this->openSslCipherAlgo, $this->encryptionKey, 0, $iv, $authTag);
     }
 
-    protected function logAccess()
-    {
-        $logFile = "testapp_local.log";
-        $appName = "TestApp01";
-        $facility = "local0";
+    /**
+     * Define extraction from cache service in extending class
+     * @param string $key
+     * @return string|null
+     */
+    abstract protected function fetchFromCache(string $key): ?string;
 
-        $cwClient = new CloudWatchLogsClient([
-            'version' => '2010-08-01',
-            'region' => 'us-west-2',
-            'credentials' => $this->credentials
-        ]);
+    /**
+     * Define storage into cache service in extending class
+     * @param string $key
+     * @param string $value
+     * @return bool|null
+     */
+    abstract protected function storeToCache(string $key, string $value): ?bool;
 
-        // Log group name, will be created if none
-        $cwGroupName = 'aws-cloudtrail-logs-202108171424';
-        // Log stream name, will be created if none
-        $cwStreamNameInstance = '873061768430_CloudTrail_us-west-2';
-        // Instance ID as log stream name
-        $cwStreamNameApp = "AccessManager";
-        // Days to keep logs, 14 by default
-        $cwRetentionDays = 90;
+    /**
+     * Define clearing of key(s) from cache service in extending class
+     * @param array $keys
+     * @return int|null
+     */
+    abstract protected function clearFromCache(array $keys): int;
 
-        $cwHandlerInstanceNotice = new CloudWatch($cwClient, $cwGroupName, $cwStreamNameInstance, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::NOTICE);
-        $cwHandlerInstanceError = new CloudWatch($cwClient, $cwGroupName, $cwStreamNameInstance, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::ERROR);
-        $cwHandlerAppNotice = new CloudWatch($cwClient, $cwGroupName, $cwStreamNameApp, $cwRetentionDays, 10000, [ 'application' => 'aws-secrets-manager' ],Logger::NOTICE);
+    /**
+     * Define logging service to be used
+     * @param string $message
+     * @return bool
+     */
+    abstract function log(string $message): bool;
 
-        $logger = new Logger('AccessManager Logging');
-
-        $formatter = new LineFormatter(null, null, false, true);
-        $syslogFormatter = new LineFormatter("%channel%: %level_name%: %message% %context% %extra%",null,false,true);
-        $infoHandler = new StreamHandler(__DIR__."/".$logFile, Logger::INFO);
-        $infoHandler->setFormatter($formatter);
-
-        $warnHandler = new SyslogHandler($appName, $facility, Logger::WARNING);
-        $warnHandler->setFormatter($syslogFormatter);
-
-        $cwHandlerInstanceNotice->setFormatter($formatter);
-        $cwHandlerInstanceError->setFormatter($formatter);
-        $cwHandlerAppNotice->setFormatter($formatter);
-
-        $logger->pushHandler($warnHandler);
-        $logger->pushHandler($infoHandler);
-        $logger->pushHandler($cwHandlerInstanceNotice);
-        $logger->pushHandler($cwHandlerInstanceError);
-        $logger->pushHandler($cwHandlerAppNotice);
-
-        $logger->info('Initial test of application logging.');
-        $logger->warn('Test of the warning system logging.');
-        $logger->notice('Application Auth Event: ',[ 'function'=>'login-action','result'=>'login-success' ]);
-        $logger->notice('Application Auth Event: ',[ 'function'=>'login-action','result'=>'login-failure' ]);
-        $logger->error('Application ERROR: System Error');
-    }
+    /**
+     * Definbe notification service to be used
+     * @param string $message
+     * @return bool
+     */
+    abstract function notify(string $message): bool;
 }

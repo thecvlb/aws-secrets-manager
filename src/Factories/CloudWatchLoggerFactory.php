@@ -14,7 +14,7 @@ class CloudWatchLoggerFactory
      * @return Logger
      * @throws \Exception
      */
-    public function __invoke(array $config): Logger
+    public static function create(array $config): Logger
     {
         $sdkParams = $config['sdk'];
         $tags = $config['tags'] ?? [ ];

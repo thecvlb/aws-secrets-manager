@@ -2,18 +2,13 @@
 
 namespace CVLB\AccessManager;
 
-use Aws\CloudWatchLogs\CloudWatchLogsClient;
 use Aws\Credentials\Credentials;
 use Aws\Exception\AwsException;
 use Aws\SecretsManager\SecretsManagerClient;
 use CVLB\AccessManager\Exception\AccessManagerException;
 use CVLB\AccessManager\Factories\CloudWatchLoggerFactory;
 use Exception;
-use Maxbanton\Cwh\Handler\CloudWatch;
 use Monolog\Logger;
-use Monolog\Formatter\LineFormatter;
-use Monolog\Handler\StreamHandler;
-use Monolog\Handler\SyslogHandler;
 use STS\Backoff\Backoff;
 
 abstract class AccessManager
@@ -116,8 +111,8 @@ abstract class AccessManager
             'cloudwatch_group' => 'aws-cloudtrail-logs-202108171424',
             'retention' => 14
         ];
-        $logger = new CloudWatchLoggerFactory();
-        $this->logger = $logger($cloudwatchConfig);
+
+        $this->logger = CloudWatchLoggerFactory::create($cloudwatchConfig);
     }
 
     /**
@@ -144,27 +139,27 @@ abstract class AccessManager
 
                 //If no value found
                 if (!$value) {
-                    $this->logAccess(['message' => __FILE__. ':'.__LINE__."|Unable to find value for [$secretName]"]);
+                    $this->logAccess(Logger::CRITICAL, "Unable to find value for secret", ['secretName' => $secretName]);
                     $this->notify(__FILE__. ':'.__LINE__."|Unable to find value for [$secretName]");
                     throw new AccessManagerException(__FILE__. ':'.__LINE__."|Unable to find value for [$secretName]");
                 }
 
                 // Key not found
                 if (!isset($value[$key])) {
-                    $this->logAccess(['message' => __FILE__. ':'.__LINE__."|Key [$key] not found in the value for [$secretName]"]);
+                    $this->logAccess(Logger::CRITICAL, 'Key not found in value', ['secretName' => $secretName, 'key' => $key]);
                     $this->notify(__FILE__. ':'.__LINE__."|Key [$key] not found in the value for [$secretName]");
                     throw new AccessManagerException(__FILE__. ':'.__LINE__."|Key [$key] not found in the value for [$secretName]");
                 }
 
             } catch (Exception $e) {
-                $this->logAccess($e->getTraceAsString());
+                $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 $this->notify($e->getTraceAsString());
                 throw new AccessManagerException($e->getMessage());
             }
         }
 
         // Log access
-        $this->logAccess(['secret' => $secretName, 'key' => $key]);
+        $this->logAccess(Logger::INFO, 'Secret Accessed', ['secret' => $secretName, 'key' => $key]);
         
         return $value[$key];
     }
@@ -238,45 +233,45 @@ abstract class AccessManager
             if ($error == 'DecryptionFailureException') {
                 // Secrets Manager can't decrypt the protected secret text using the provided AWS KMS key.
                 // Handle the exception here, and/or rethrow as needed.
-                $this->logAccess(['message' => $e->getTraceAsString()]);
+                $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 $this->notify($e->getTraceAsString());
                 throw $e;
             }
             if ($error == 'InternalServiceErrorException') {
                 // An error occurred on the server side.
                 // Handle the exception here, and/or rethrow as needed.
-                $this->logAccess(['message' => $e->getTraceAsString()]);
+                $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 $this->notify($e->getTraceAsString());
                 throw $e;
             }
             if ($error == 'InvalidParameterException') {
                 // You provided an invalid value for a parameter.
                 // Handle the exception here, and/or rethrow as needed.
-                $this->logAccess(['message' => $e->getTraceAsString()]);
+                $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 $this->notify($e->getTraceAsString());
                 throw $e;
             }
             if ($error == 'InvalidRequestException') {
                 // You provided a parameter value that is not valid for the current state of the resource.
                 // Handle the exception here, and/or rethrow as needed.
-                $this->logAccess(['message' => $e->getTraceAsString()]);
+                $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 $this->notify($e->getTraceAsString());
                 throw $e;
             }
             if ($error == 'ResourceNotFoundException') {
                 // We can't find the resource that you asked for.
                 // Handle the exception here, and/or rethrow as needed.
-                $this->logAccess(['message' => $e->getTraceAsString()]);
+                $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 $this->notify($e->getTraceAsString());
                 throw $e;
             }
 
-            $this->logAccess(['message' => $e->getTraceAsString()]);
+            $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
             $this->notify($e->getTraceAsString());
             throw $e;
             
         } catch (Exception $e) {
-            $this->logAccess(['message' => $e->getTraceAsString()]);
+            $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
             $this->notify($e->getTraceAsString());
             throw $e;
         }
@@ -341,11 +336,42 @@ abstract class AccessManager
         return openssl_decrypt($encryptedValue, $this->openSslCipherAlgo, $this->encryptionKey, 0, $iv, $authTag);
     }
 
-    protected function logAccess(array $params)
+    /**
+     * Log event to CloudWatch
+     * @param int $level
+     * @param string $message
+     * @param array $params
+     */
+    protected function logAccess(int $level, string $message, array $params): void
     {
         $logParams = array_merge($params, $this->logParams());
 
-        $this->logger->notice('AccessManager Event: ', $logParams);
+        switch ($level)
+        {
+            case Logger::DEBUG:
+                $this->logger->debug($message, $logParams);
+                break;
+            case Logger::INFO:
+                $this->logger->info($message, $logParams);
+                break;
+            case Logger::NOTICE:
+                $this->logger->notice($message, $logParams);
+                break;
+            case Logger::WARNING:
+                $this->logger->warning($message, $logParams);
+                break;
+            case Logger::CRITICAL:
+                $this->logger->critical($message, $logParams);
+                break;
+            case Logger::ALERT:
+                $this->logger->alert($message, $logParams);
+                break;
+            case Logger::EMERGENCY:
+                $this->logger->emergency($message, $logParams);
+                break;
+            default:
+                $this->logger->log(000, $message, $logParams);
+        }
     }
 
     /**

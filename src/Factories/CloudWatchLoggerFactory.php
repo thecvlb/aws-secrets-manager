@@ -13,12 +13,20 @@ class CloudWatchLoggerFactory
      * @param array $config
      * @return Logger
      * @throws \Exception
+     * @see https://docs.aws.amazon.com/aws-sdk-php/v3/api/class-Aws.CloudWatchLogs.CloudWatchLogsClient.html
      */
     public static function create(array $config): Logger
     {
+        // Connection array
         $sdkParams = $config['sdk'];
+
+        // AWS tags
         $tags = $config['tags'] ?? [ ];
-        $name = $config['name'] ?? 'AccessManagerLogger';
+
+        // Create a name with an instance id and application name
+        // e.g. i-0a9649ddc6f8093aa:AdminPortal
+        $instance_id = $config['instance_id'] ? $config['instance_id'].':' : null;
+        $name = $instance_id.$config['application_name'];
 
         // Log group name, will be created if none
         $groupName = $config['cloudwatch_group'];

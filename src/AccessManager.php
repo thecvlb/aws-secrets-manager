@@ -9,6 +9,7 @@ use CVLB\AccessManager\Exception\AccessManagerException;
 use CVLB\AccessManager\Factories\CloudWatchLoggerFactory;
 use Exception;
 use Monolog\Logger;
+use phpDocumentor\Reflection\Types\String_;
 use STS\Backoff\Backoff;
 
 abstract class AccessManager
@@ -34,37 +35,49 @@ abstract class AccessManager
     private $encryptionKey;
 
     /**
+     * @var bool
+     */
+    protected $useCache = true;
+
+    /**
+     * @var string
+     */
+    protected $instanceId;
+
+    /**
      * @var Backoff 
      */
     private $backoff;
 
     /**
-     * @var bool
+     * @var Logger
      */
-    protected $useCache = true;
-
     private $logger;
 
     /**
-     * @param array $config - expecting keys: aws_key, aws_secret, encryption_key, and optionally, use_cache
+     * @param Credentials $credentials
+     * @param string $encryption_key
+     * @param array $cloudWatchConfig - [string cloudwatch_group, string application_name, int retention, array tags]
+     * @param bool $use_cache
      */
-    public function __construct(array $config)
+    public function __construct(Credentials $credentials, string $encryption_key, array $cloudWatchConfig, bool $use_cache = true)
     {
-        $this->setCredentials($config['aws_key'], $config['aws_secret']);
-        $this->setEncryptionKey($config['encryption_key']);
-        $this->setUseCache($config['use_cache'] ?? true); // default to true
+        $this->setCredentials($credentials);
+        $this->setEncryptionKey($encryption_key);
+        $this->setUseCache($use_cache);
+        $this->setInstanceid();
         
-        // Init the backoff object
+        // Init STS\Backoff\Backoff
         $this->setBackoff();
 
-        // Init the logger
-        $this->setLogger();
+        // Init Monolog\Logger with CloudWatch
+        $this->setLogger($cloudWatchConfig);
     }
 
-    private function setCredentials(string $awsKey, string $awsSecret): void
+    private function setCredentials(Credentials $credentials): void
     {
         // ToDo: move to Instance Role
-        $this->credentials = new Credentials($awsKey, $awsSecret);
+        $this->credentials = $credentials;
     }
 
     /**
@@ -91,6 +104,16 @@ abstract class AccessManager
         return $this->useCache;
     }
 
+    private function setInstanceId(): void
+    {
+        $this->instanceId = self::findInstanceId();
+    }
+
+    public function getInstanceId(): string
+    {
+        return $this->instanceId;
+    }
+
     /**
      * Init the Backoff object
      */
@@ -99,20 +122,17 @@ abstract class AccessManager
         $this->backoff = new Backoff($this->maxRetryAttempts, 'exponential', null, true);
     }
 
-    private function setLogger(): void
+    private function setLogger(array $cloudWatchConfig): void
     {
-        $cloudwatchConfig = [
-            'sdk' => [
-                'version' => 'latest',
-                'region' => 'us-west-2',
-                'credentials' => $this->credentials
-            ],
-            'name' => 'AccessManagerLogger',
-            'cloudwatch_group' => 'aws-cloudtrail-logs-202108171424',
-            'retention' => 14
+        $cloudWatchConfig['sdk'] = [
+            'version' => 'latest',
+            'region' => 'us-west-2',
+            'credentials' => $this->credentials
         ];
 
-        $this->logger = CloudWatchLoggerFactory::create($cloudwatchConfig);
+        $cloudWatchConfig['instance_id'] = $this->getInstanceId();
+
+        $this->logger = CloudWatchLoggerFactory::create($cloudWatchConfig);
     }
 
     /**
@@ -124,17 +144,14 @@ abstract class AccessManager
      */
     public function access(string $secretName, string $key): string
     {
-        $message ='Secret Accessed from Cache';
-
         // Look for it in cache first and decode
         $value = json_decode($this->fromCache($secretName), true);
 
         if (!$value || !isset($value[$key])) {
-
-            $message = 'Secret Accessed from AWS';
-
+            // If not found in cache, get from SecretsManager
             try {
-                // If not found in cache, get from SecretsManager
+                // Request within the backoff
+                // @see \STS\Backoff\Backoff
                 $value = $this->backoff->run(function() use($secretName) {
                     return $this->fromSource($secretName);
                 });
@@ -156,15 +173,15 @@ abstract class AccessManager
                     throw new AccessManagerException(__FILE__. ':'.__LINE__."|Key [$key] not found in the value for [$secretName]");
                 }
 
+                // Log access
+                $this->logAccess(Logger::INFO, 'Secret Accessed', ['secret' => $secretName, 'key' => $key]);
+
             } catch (Exception $e) {
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 $this->notify($e->getTraceAsString());
                 throw new AccessManagerException($e->getMessage());
             }
         }
-
-        // Log access
-        $this->logAccess(Logger::INFO, $message, ['secret' => $secretName, 'key' => $key]);
         
         return $value[$key];
     }
@@ -217,6 +234,7 @@ abstract class AccessManager
      * @param string $secretName
      * @return string|null
      * @throws Exception
+     * @see https://docs.aws.amazon.com/aws-sdk-php/v3/api/class-Aws.SecretsManager.SecretsManagerClient.html
      */
     protected function fetchFromSource(string $secretName): ?string
     {
@@ -377,6 +395,18 @@ abstract class AccessManager
             default:
                 $this->logger->log(000, $message, $logParams);
         }
+    }
+
+    /**
+     * Find the instance-id from the AWS resource or use the server IP
+     * @return string|null
+     */
+    static function findInstanceId(): ?string
+    {
+        if (!$instance_id = @file_get_contents("http://instance-data/latest/meta-data/instance-id"))
+            $instance_id = $_SERVER['SERVER_ADDR'] ?? null;
+
+        return $instance_id;
     }
 
     /**

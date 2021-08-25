@@ -9,7 +9,6 @@ use CVLB\AccessManager\Exception\AccessManagerException;
 use CVLB\AccessManager\Factories\CloudWatchLoggerFactory;
 use Exception;
 use Monolog\Logger;
-use phpDocumentor\Reflection\Types\String_;
 use STS\Backoff\Backoff;
 
 abstract class AccessManager
@@ -50,6 +49,11 @@ abstract class AccessManager
     private $backoff;
 
     /**
+     * @var SecretsManagerClient
+     */
+    private $secretsManager;
+
+    /**
      * @var Logger
      */
     private $logger;
@@ -70,10 +74,16 @@ abstract class AccessManager
         // Init STS\Backoff\Backoff
         $this->setBackoff();
 
+        // Init SecretsManagerClient
+        $this->setSecretsManager();
+
         // Init Monolog\Logger with CloudWatch
         $this->setLogger($cloudWatchConfig);
     }
 
+    /**
+     * @param Credentials $credentials
+     */
     private function setCredentials(Credentials $credentials): void
     {
         // ToDo: move to Instance Role
@@ -104,11 +114,17 @@ abstract class AccessManager
         return $this->useCache;
     }
 
+    /**
+     * Set the instance id used for logging
+     */
     private function setInstanceId(): void
     {
         $this->instanceId = self::findInstanceId();
     }
 
+    /**
+     * @return string
+     */
     public function getInstanceId(): string
     {
         return $this->instanceId;
@@ -119,20 +135,41 @@ abstract class AccessManager
      */
     private function setBackoff(): void
     {
-        $this->backoff = new Backoff($this->maxRetryAttempts, 'exponential', null, true);
+        if (!$this->backoff)
+            $this->backoff = new Backoff($this->maxRetryAttempts, 'exponential', null, true);
     }
 
+    /**
+     * Init SecretsManagerClient
+     */
+    private function setSecretsManager(): void
+    {
+        if (!$this->secretsManager)
+            $this->secretsManager = new SecretsManagerClient([
+                'version' => '2017-10-17',
+                'region' => 'us-west-2', // ToDo: make variable
+                'credentials' => $this->credentials
+            ]);
+    }
+
+    /**
+     * Init Monolog\Logger using a CloudWatch handler
+     * @param array $cloudWatchConfig - [string cloudwatch_group, string application_name, int retention, array tags]
+     * @throws Exception
+     */
     private function setLogger(array $cloudWatchConfig): void
     {
-        $cloudWatchConfig['sdk'] = [
-            'version' => 'latest',
-            'region' => 'us-west-2',
-            'credentials' => $this->credentials
-        ];
+        if (!$this->logger) {
+            $cloudWatchConfig['sdk'] = [
+                'version' => 'latest', // ToDo: lock a version
+                'region' => 'us-west-2', // ToDo: will need to be variable
+                'credentials' => $this->credentials // ToDo: move to instance role
+            ];
 
-        $cloudWatchConfig['instance_id'] = $this->getInstanceId();
+            $cloudWatchConfig['instance_id'] = $this->getInstanceId();
 
-        $this->logger = CloudWatchLoggerFactory::create($cloudWatchConfig);
+            $this->logger = CloudWatchLoggerFactory::create($cloudWatchConfig);
+        }
     }
 
     /**
@@ -162,14 +199,12 @@ abstract class AccessManager
                 //If no value found
                 if (!$value) {
                     $this->logAccess(Logger::CRITICAL, "Unable to find value for secret", ['secretName' => $secretName]);
-                    $this->notify(__FILE__. ':'.__LINE__."|Unable to find value for [$secretName]");
                     throw new AccessManagerException(__FILE__. ':'.__LINE__."|Unable to find value for [$secretName]");
                 }
 
                 // Key not found
                 if (!isset($value[$key])) {
                     $this->logAccess(Logger::CRITICAL, 'Key not found in value', ['secretName' => $secretName, 'key' => $key]);
-                    $this->notify(__FILE__. ':'.__LINE__."|Key [$key] not found in the value for [$secretName]");
                     throw new AccessManagerException(__FILE__. ':'.__LINE__."|Key [$key] not found in the value for [$secretName]");
                 }
 
@@ -178,7 +213,6 @@ abstract class AccessManager
 
             } catch (Exception $e) {
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
-                $this->notify($e->getTraceAsString());
                 throw new AccessManagerException($e->getMessage());
             }
         }
@@ -238,16 +272,9 @@ abstract class AccessManager
      */
     protected function fetchFromSource(string $secretName): ?string
     {
-        // Init the AWS client
-        $client = new SecretsManagerClient([
-            'version' => '2017-10-17',
-            'region' => 'us-west-2',
-            'credentials' => $this->credentials
-        ]);
-
         try {
             // Make call
-            $result = $client->getSecretValue([
+            $result = $this->secretsManager->getSecretValue([
                 'SecretId' => $secretName,
             ]);
 
@@ -257,49 +284,41 @@ abstract class AccessManager
                 // Secrets Manager can't decrypt the protected secret text using the provided AWS KMS key.
                 // Handle the exception here, and/or rethrow as needed.
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
-                $this->notify($e->getTraceAsString());
                 throw $e;
             }
             if ($error == 'InternalServiceErrorException') {
                 // An error occurred on the server side.
                 // Handle the exception here, and/or rethrow as needed.
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
-                $this->notify($e->getTraceAsString());
                 throw $e;
             }
             if ($error == 'InvalidParameterException') {
                 // You provided an invalid value for a parameter.
                 // Handle the exception here, and/or rethrow as needed.
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
-                $this->notify($e->getTraceAsString());
                 throw $e;
             }
             if ($error == 'InvalidRequestException') {
                 // You provided a parameter value that is not valid for the current state of the resource.
                 // Handle the exception here, and/or rethrow as needed.
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
-                $this->notify($e->getTraceAsString());
                 throw $e;
             }
             if ($error == 'ResourceNotFoundException') {
                 // We can't find the resource that you asked for.
                 // Handle the exception here, and/or rethrow as needed.
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
-                $this->notify($e->getTraceAsString());
                 throw $e;
             }
 
             $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
-            $this->notify($e->getTraceAsString());
             throw $e;
             
         } catch (Exception $e) {
             $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
-            $this->notify($e->getTraceAsString());
             throw $e;
         }
 
-        // Decrypts secret using the associated KMS CMK.
         // Depending on whether the secret is a string or binary, one of these fields will be populated.
         if (isset($result['SecretString'])) {
             $secret = $result['SecretString'];
@@ -433,15 +452,9 @@ abstract class AccessManager
 
     /**
      * Define method to return additional params to be added to log
+     * This allows for additional, customized log info per application
      * e.g. user_id, username, etc
      * @return array
      */
     abstract protected function logParams(): array;
-
-    /**
-     * Define notification service to be used
-     * @param string $message
-     * @return bool
-     */
-    abstract function notify(string $message): bool;
 }

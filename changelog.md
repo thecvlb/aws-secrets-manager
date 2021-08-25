@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 ### Fixed
 
+## [1.2.1] - 2021-08-25
+### Changed
+- readme
+
 ## [1.2.0] - 2021-08-25
 ### Added
 - Included Changelog

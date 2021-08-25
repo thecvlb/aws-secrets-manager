@@ -30,11 +30,15 @@ You must extend the abstract `AccessManager` class to define the caching methods
 
 ```bash
 $redisAccessManager = new \RedisAccessManager(
+    new \Aws\Credentials\Credentials($_ENV['ADMINPORTAL_AWS_KEY'], $_ENV['ADMINPORTAL_AWS_SECRET']), 
+    $_ENV['ENCRYPTION_KEY'], 
     [
-        'aws_key' => $_ENV['AWS_KEY'],
-        'aws_secret' => $_ENV['AWS_SECRET'],
-        'encryption_key' => $_ENV['ENCRYPTION_KEY'],
-    ]
+        'application_name' => $_ENV['APP_NAME'],
+        'cloudwatch_group' => 'aws-cloudtrail-logs-202108171424',
+        'retention' => 14,
+        'tags' => []
+    ], 
+    $_ENV['USE_SECRETS_CACHE']
 );
 ```
 The `access()` method requires an `AWS SecretName` and the `key`:

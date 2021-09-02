@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 ### Fixed
 
+## [1.2.2] - 2021-09-02
+### Changed
+- access() and fetchFromSource() return null on thrown exceptions
+
 ## [1.2.1] - 2021-08-25
 ### Changed
 - readme

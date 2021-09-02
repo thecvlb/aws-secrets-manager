@@ -176,10 +176,10 @@ abstract class AccessManager
      * Get value for the $key from cache or AWS SecretsManager service
      * @param string $secretName
      * @param string $key
-     * @return string
+     * @return string|null
      * @throws AccessManagerException
      */
-    public function access(string $secretName, string $key): string
+    public function access(string $secretName, string $key): ?string
     {
         // Look for it in cache first and decode
         $value = json_decode($this->fromCache($secretName), true);
@@ -199,13 +199,13 @@ abstract class AccessManager
                 //If no value found
                 if (!$value) {
                     $this->logAccess(Logger::CRITICAL, "Unable to find value for secret", ['secretName' => $secretName]);
-                    throw new AccessManagerException(__FILE__. ':'.__LINE__."|Unable to find value for [$secretName]");
+                    return null;
                 }
 
                 // Key not found
                 if (!isset($value[$key])) {
                     $this->logAccess(Logger::CRITICAL, 'Key not found in value', ['secretName' => $secretName, 'key' => $key]);
-                    throw new AccessManagerException(__FILE__. ':'.__LINE__."|Key [$key] not found in the value for [$secretName]");
+                    return null;
                 }
 
                 // Log access
@@ -213,7 +213,7 @@ abstract class AccessManager
 
             } catch (Exception $e) {
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
-                throw new AccessManagerException($e->getMessage());
+                return null;
             }
         }
         
@@ -284,39 +284,39 @@ abstract class AccessManager
                 // Secrets Manager can't decrypt the protected secret text using the provided AWS KMS key.
                 // Handle the exception here, and/or rethrow as needed.
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
-                throw $e;
+                return null;
             }
             if ($error == 'InternalServiceErrorException') {
                 // An error occurred on the server side.
                 // Handle the exception here, and/or rethrow as needed.
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
-                throw $e;
+                return null;
             }
             if ($error == 'InvalidParameterException') {
                 // You provided an invalid value for a parameter.
                 // Handle the exception here, and/or rethrow as needed.
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
-                throw $e;
+                return null;
             }
             if ($error == 'InvalidRequestException') {
                 // You provided a parameter value that is not valid for the current state of the resource.
                 // Handle the exception here, and/or rethrow as needed.
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
-                throw $e;
+                return null;
             }
             if ($error == 'ResourceNotFoundException') {
                 // We can't find the resource that you asked for.
                 // Handle the exception here, and/or rethrow as needed.
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
-                throw $e;
+                return null;
             }
 
             $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
-            throw $e;
+            return null;
             
         } catch (Exception $e) {
             $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
-            throw $e;
+            return null;
         }
 
         // Depending on whether the secret is a string or binary, one of these fields will be populated.

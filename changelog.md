@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 ### Fixed
 
+## [1.2.3] - 2021-09-03
+### Changed
+- update log name for more efficient filtering
+
 ## [1.2.2] - 2021-09-02
 ### Changed
 - access() and fetchFromSource() return null on thrown exceptions

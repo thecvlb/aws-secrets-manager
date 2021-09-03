@@ -24,9 +24,9 @@ class CloudWatchLoggerFactory
         $tags = $config['tags'] ?? [ ];
 
         // Create a name with an instance id and application name
-        // e.g. i-0a9649ddc6f8093aa:AdminPortal
+        // e.g. i-0a9649ddc6f8093aa:AdminPortal:AccessManager
         $instance_id = $config['instance_id'] ? $config['instance_id'].':' : null;
-        $name = $instance_id.$config['application_name'];
+        $name = $instance_id.$config['application_name'].':AccessManager';
 
         // Log group name, will be created if none
         $groupName = $config['cloudwatch_group'];

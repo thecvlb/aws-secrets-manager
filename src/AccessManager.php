@@ -386,7 +386,7 @@ abstract class AccessManager
      */
     protected function logAccess(int $level, string $message, array $params): void
     {
-        $logParams = array_merge($params, $this->logParams());
+        $logParams = array_merge($this->logParams(), $params);
 
         switch ($level)
         {

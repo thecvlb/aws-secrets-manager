@@ -7,6 +7,11 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 ### Fixed
 
+## [1.3.0] - 2021-09-16
+### Changed
+- removed use of credentials in SDK services in favor of credential provider chain
+- composer updates
+
 ## [1.2.3] - 2021-09-03
 ### Changed
 - update log name for more efficient filtering

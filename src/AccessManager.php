@@ -2,7 +2,6 @@
 
 namespace CVLB\AccessManager;
 
-use Aws\Credentials\Credentials;
 use Aws\Exception\AwsException;
 use Aws\SecretsManager\SecretsManagerClient;
 use CVLB\AccessManager\Exception\AccessManagerException;
@@ -13,11 +12,6 @@ use STS\Backoff\Backoff;
 
 abstract class AccessManager
 {
-    /**
-     * @var Credentials
-     */
-    private $credentials;
-
     /**
      * @var int
      */
@@ -59,14 +53,12 @@ abstract class AccessManager
     private $logger;
 
     /**
-     * @param Credentials $credentials
      * @param string $encryption_key
      * @param array $cloudWatchConfig - [string cloudwatch_group, string application_name, int retention, array tags]
      * @param bool $use_cache
      */
-    public function __construct(Credentials $credentials, string $encryption_key, array $cloudWatchConfig, bool $use_cache = true)
+    public function __construct(string $encryption_key, array $cloudWatchConfig, bool $use_cache = true)
     {
-        $this->setCredentials($credentials);
         $this->setEncryptionKey($encryption_key);
         $this->setUseCache($use_cache);
         $this->setInstanceid();
@@ -79,15 +71,6 @@ abstract class AccessManager
 
         // Init Monolog\Logger with CloudWatch
         $this->setLogger($cloudWatchConfig);
-    }
-
-    /**
-     * @param Credentials $credentials
-     */
-    private function setCredentials(Credentials $credentials): void
-    {
-        // ToDo: move to Instance Role
-        $this->credentials = $credentials;
     }
 
     /**
@@ -148,7 +131,6 @@ abstract class AccessManager
             $this->secretsManager = new SecretsManagerClient([
                 'version' => '2017-10-17',
                 'region' => 'us-west-2', // ToDo: make variable
-                'credentials' => $this->credentials
             ]);
     }
 
@@ -163,7 +145,6 @@ abstract class AccessManager
             $cloudWatchConfig['sdk'] = [
                 'version' => 'latest', // ToDo: lock a version
                 'region' => 'us-west-2', // ToDo: will need to be variable
-                'credentials' => $this->credentials // ToDo: move to instance role
             ];
 
             $cloudWatchConfig['instance_id'] = $this->getInstanceId();

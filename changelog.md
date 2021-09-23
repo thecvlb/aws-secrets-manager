@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 ### Fixed
 
+## [1.3.1] - 2021-09-23
+### Changed
+- update ip retrieval for $instance_id
+
 ## [1.3.0] - 2021-09-16
 ### Changed
 - removed use of credentials in SDK services in favor of credential provider chain

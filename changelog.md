@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 ### Fixed
 
+## [1.3.2] - 2021-09-27
+### Changed
+- check openssl cipher algo by case
+
 ## [1.3.1] - 2021-09-23
 ### Changed
 - update ip retrieval for $instance_id

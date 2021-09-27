@@ -317,8 +317,17 @@ abstract class AccessManager
      */
     private function encryptValue(string $value): ?string
     {
+        /*
+         * AWS EC2 AMI uses OpenSSL 1.0.2; uppercase fails for algo AES-256-GCM
+         * @see https://forums.aws.amazon.com/thread.jspa?threadID=339073
+         */
         // determine the length for the initialization vector based on the cipher being used
+        // check for uppercase; convert to lowercase if not found;
+        if (!in_array($this->openSslCipherAlgo, openssl_get_cipher_methods()))
+            $this->openSslCipherAlgo = strtolower($this->openSslCipherAlgo);
+
         $iv_length = openssl_cipher_iv_length($this->openSslCipherAlgo);
+
         
         // initialization vector
         $iv = substr(md5(microtime()),0, $iv_length);
@@ -341,6 +350,15 @@ abstract class AccessManager
      */
     private function decryptValue(string $value): ?string
     {
+        /*
+         * AWS EC2 AMI uses OpenSSL 1.0.2; uppercase fails for algo AES-256-GCM
+         * @see https://forums.aws.amazon.com/thread.jspa?threadID=339073
+         */
+        // determine the length for the initialization vector based on the cipher being used
+        // check for uppercase; convert to lowercase if not found;
+        if (!in_array($this->openSslCipherAlgo, openssl_get_cipher_methods()))
+            $this->openSslCipherAlgo = strtolower($this->openSslCipherAlgo);
+
         // Our encryption process wrapped the ciphertext in base64 encoding, so decode it
         $encrypted = base64_decode($value);
 

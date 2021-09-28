@@ -421,14 +421,12 @@ abstract class AccessManager
      */
     static function findInstanceId(): ?string
     {
-        if (!$instance_id = @file_get_contents("http://instance-data/latest/meta-data/instance-id")) {
-            if ($_SERVER && isset($_SERVER['SERVER_ADDR'])) {
-                $instance_id = $_SERVER['SERVER_ADDR'];
-            }
-            else {
-                $ips = explode(' ', shell_exec('hostname -I'));
-                $instance_id = $ips[0] ?? null;
-            }
+        if ($_SERVER && isset($_SERVER['SERVER_ADDR'])) {
+            $instance_id = $_SERVER['SERVER_ADDR'];
+        }
+        else {
+            $ips = explode(' ', shell_exec('hostname -I'));
+            $instance_id = $ips[0] ?? null;
         }
 
         return $instance_id;

@@ -158,7 +158,7 @@ class AccessManagerTest extends TestCase
             ->with('mySecret')
             ->willReturn($secretJson);
 
-        $this->assertEquals($secretJson, $obj->access('mySecret', null));
+        $this->assertEquals($secretJson, $obj->access('mySecret'));
     }
 
     public function testAccessWithKey()

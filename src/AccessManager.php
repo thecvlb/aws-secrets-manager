@@ -183,7 +183,7 @@ abstract class AccessManager
      * @param string|null $key
      * @return string|null
      */
-    public function access(string $secretName, ?string $key): ?string
+    public function access(string $secretName, ?string $key = null): ?string
     {
         // Look for secret in cache first
         $result = $this->fromCache($secretName);

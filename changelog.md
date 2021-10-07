@@ -7,10 +7,20 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 ### Fixed
 
+## [1.4.0] - 2021-10-07
+### Added
+- additional getter methods
+
+### Changed
+- access() method key is optional in order to return full json from secret
+- updated method visibility on several methods
+- move some procedural code to separate methods
+- composer update
+
 ## [1.3.3] - 2021-09-28
 ### Changed
 - remove request to instance id url 
-- 
+
 ## [1.3.2] - 2021-09-27
 ### Changed
 - check openssl cipher algo by case

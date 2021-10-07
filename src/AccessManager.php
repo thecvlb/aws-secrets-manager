@@ -61,7 +61,7 @@ abstract class AccessManager
     {
         $this->setEncryptionKey($encryption_key);
         $this->setUseCache($use_cache);
-        $this->setInstanceid();
+        $this->setInstanceId();
         
         // Init STS\Backoff\Backoff
         $this->setBackoff();
@@ -76,15 +76,23 @@ abstract class AccessManager
     /**
      * @param string $string
      */
-    private function setEncryptionKey(string $string): void
+    public function setEncryptionKey(string $string): void
     {
         $this->encryptionKey = $string;
     }
 
     /**
+     * @return string
+     */
+    private function getEncryptionKey(): string
+    {
+        return $this->encryptionKey;
+    }
+
+    /**
      * @param bool $bool
      */
-    private function setUseCache(bool $bool): void
+    public function setUseCache(bool $bool): void
     {
         $this->useCache = $bool;
     }
@@ -100,15 +108,15 @@ abstract class AccessManager
     /**
      * Set the instance id used for logging
      */
-    private function setInstanceId(): void
+    public function setInstanceId(): void
     {
-        $this->instanceId = self::findInstanceId();
+        $this->instanceId = $this->findInstanceId();
     }
 
     /**
      * @return string
      */
-    public function getInstanceId(): string
+    public function getInstanceId(): ?string
     {
         return $this->instanceId;
     }
@@ -123,6 +131,14 @@ abstract class AccessManager
     }
 
     /**
+     * @return Backoff
+     */
+    public function getBackoff(): Backoff
+    {
+        return $this->backoff;
+    }
+
+    /**
      * Init SecretsManagerClient
      */
     private function setSecretsManager(): void
@@ -132,6 +148,14 @@ abstract class AccessManager
                 'version' => '2017-10-17',
                 'region' => 'us-west-2', // ToDo: make variable
             ]);
+    }
+
+    /**
+     * @return SecretsManagerClient
+     */
+    public function getSecretsManager(): SecretsManagerClient
+    {
+        return $this->secretsManager;
     }
 
     /**
@@ -156,37 +180,42 @@ abstract class AccessManager
     /**
      * Get value for the $key from cache or AWS SecretsManager service
      * @param string $secretName
-     * @param string $key
+     * @param string|null $key
      * @return string|null
-     * @throws AccessManagerException
      */
-    public function access(string $secretName, string $key): ?string
+    public function access(string $secretName, ?string $key): ?string
     {
-        // Look for it in cache first and decode
-        $value = json_decode($this->fromCache($secretName), true);
+        // Look for secret in cache first
+        $result = $this->fromCache($secretName);
 
-        if (!$value || !isset($value[$key])) {
+        // If key requested, get key's value as the result
+        if ($result && $key)
+            $result = $this->getKeyFromSecret($result, $key);
+
+        if (!$result) {
             // If not found in cache, get from SecretsManager
             try {
                 // Request within the backoff
                 // @see \STS\Backoff\Backoff
-                $value = $this->backoff->run(function() use($secretName) {
+                $result = $this->getBackoff()->run(function() use($secretName) {
                     return $this->fromSource($secretName);
                 });
 
-                // Decode the json
-                $value = json_decode($value, true);
-
-                //If no value found
-                if (!$value) {
+                // If no result found
+                if (!$result) {
                     $this->logAccess(Logger::CRITICAL, "Unable to find value for secret", ['secretName' => $secretName]);
                     return null;
                 }
 
-                // Key not found
-                if (!isset($value[$key])) {
-                    $this->logAccess(Logger::CRITICAL, 'Key not found in value', ['secretName' => $secretName, 'key' => $key]);
-                    return null;
+                // If key requested, get key's value as the result
+                if ($key) {
+                    $result = $this->getKeyFromSecret($result, $key);
+
+                    // If key's value not found
+                    if (!$result) {
+                        $this->logAccess(Logger::CRITICAL, 'Key not found in value', ['secretName' => $secretName, 'key' => $key]);
+                        return null;
+                    }
                 }
 
                 // Log access
@@ -197,8 +226,20 @@ abstract class AccessManager
                 return null;
             }
         }
-        
-        return $value[$key];
+
+        return $result;
+    }
+
+    /**
+     * Get specified key from secret
+     * @param string $secret
+     * @param string $key
+     * @return string|null
+     */
+    public function getKeyFromSecret(string $secret, string $key): ?string
+    {
+        $secretArray = json_decode($secret, true);
+        return $secretArray[$key] ?? null;
     }
 
     /**
@@ -255,7 +296,7 @@ abstract class AccessManager
     {
         try {
             // Make call
-            $result = $this->secretsManager->getSecretValue([
+            $result = $this->getSecretsManager()->getSecretValue([
                 'SecretId' => $secretName,
             ]);
 
@@ -333,7 +374,7 @@ abstract class AccessManager
         $iv = substr(md5(microtime()),0, $iv_length);
         
         // Do encryption
-        $encrypted = openssl_encrypt($value, $this->openSslCipherAlgo, $this->encryptionKey, 0, $iv,$tag);
+        $encrypted = openssl_encrypt($value, $this->openSslCipherAlgo, $this->getEncryptionKey(), 0, $iv,$tag);
 
         if ($encrypted) {
             // encode the iv, and tag with the encrypted text, they are both required for decryption           
@@ -374,7 +415,7 @@ abstract class AccessManager
         // extract the value we want to decrypt (between the iv length and the default tag length of 16)
         $encryptedValue = substr($encrypted, $iv_length, -16);
         
-        return openssl_decrypt($encryptedValue, $this->openSslCipherAlgo, $this->encryptionKey, 0, $iv, $authTag);
+        return openssl_decrypt($encryptedValue, $this->openSslCipherAlgo, $this->getEncryptionKey(), 0, $iv, $authTag);
     }
 
     /**
@@ -419,17 +460,24 @@ abstract class AccessManager
      * Find the instance-id from the AWS resource or use the server IP
      * @return string|null
      */
-    static function findInstanceId(): ?string
+    protected function findInstanceId(): ?string
     {
-        if ($_SERVER && isset($_SERVER['SERVER_ADDR'])) {
+        if ($_SERVER && isset($_SERVER['SERVER_ADDR']))
             $instance_id = $_SERVER['SERVER_ADDR'];
-        }
-        else {
-            $ips = explode(' ', shell_exec('hostname -I'));
-            $instance_id = $ips[0] ?? null;
-        }
+        else
+            $instance_id = $this->getIpFromShell();
 
         return $instance_id;
+    }
+
+    /**
+     * Get ip from hostname
+     * @return string|null
+     */
+    protected function getIpFromShell(): ?string
+    {
+        $ips = explode(' ', shell_exec('hostname -I'));
+        return $ips[0] ?? null;
     }
 
     /**
@@ -452,7 +500,7 @@ abstract class AccessManager
      * @param array $keys
      * @return int|null
      */
-    abstract protected function clearFromCache(array $keys): int;
+    abstract protected function clearFromCache(array $keys): ?int;
 
     /**
      * Define method to return additional params to be added to log

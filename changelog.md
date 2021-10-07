@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 ### Fixed
 
+## [1.4.2] - 2021-10-07
+### Changed
+- set default value for access() $key
+
 ## [1.4.0] - 2021-10-07
 ### Added
 - additional getter methods

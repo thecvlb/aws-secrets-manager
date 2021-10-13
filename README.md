@@ -33,7 +33,7 @@ $redisAccessManager = new \RedisAccessManager(
     $_ENV['ENCRYPTION_KEY'], 
     [
         'application_name' => $_ENV['APP_NAME'],
-        'cloudwatch_group' => 'aws-cloudtrail-logs-202108171424',
+        'cloudwatch_group' => $_ENV['CLOUDTRAIL_GROUP'],
         'retention' => 14,
         'tags' => []
     ], 

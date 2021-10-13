@@ -41,7 +41,7 @@ class AccessManagerTest extends TestCase
     {
         return [
             'application_name' => str_replace(' ', '', 'PHP Unit Test'),
-            'cloudwatch_group' => 'aws-cloudtrail-logs-202108171424',
+            'cloudwatch_group' => 'cloudtrail-logs',
             'retention' => 14,
             'tags' => []
         ];

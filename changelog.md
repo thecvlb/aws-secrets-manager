@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 ### Fixed
 
+## [1.4.3] - 2022-02-15
+### Changed
+- added $region arg to constructor so aws region can be changed
+
 ## [1.4.2] - 2021-10-07
 ### Changed
 - set default value for access() $key

@@ -12,7 +12,7 @@ class AccessManagerTest extends TestCase
     /**
      * @var string
      */
-    protected $ip = '8.8.8.8';
+    protected string $ip = '8.8.8.8';
 
     protected function setServerAddr(): void
     {
@@ -62,8 +62,11 @@ class AccessManagerTest extends TestCase
 
     public function testGetUseCache()
     {
+        $method = self::getMethod('setUseCache');
         $this->setServerAddr();
         $obj = $this->getMockedAccessManager();
+        $method->invokeArgs($obj, [true]);
+
 
         $this->assertTrue($obj->getUseCache());
     }

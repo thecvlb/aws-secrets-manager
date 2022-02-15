@@ -4,7 +4,6 @@ namespace CVLB\AccessManager;
 
 use Aws\Exception\AwsException;
 use Aws\SecretsManager\SecretsManagerClient;
-use CVLB\AccessManager\Exception\AccessManagerException;
 use CVLB\AccessManager\Factories\CloudWatchLoggerFactory;
 use Exception;
 use Monolog\Logger;
@@ -15,52 +14,60 @@ abstract class AccessManager
     /**
      * @var int
      */
-    protected $maxRetryAttempts = 5;
+    protected int $maxRetryAttempts = 5;
 
     /**
      * @var string
      */
-    private $openSslCipherAlgo = 'AES-256-GCM';
+    private string $openSslCipherAlgo = 'AES-256-GCM';
 
     /**
      * @var string
      */
-    private $encryptionKey;
+    private string $encryptionKey;
 
     /**
      * @var bool
      */
-    protected $useCache = true;
+    protected bool $useCache = true;
 
     /**
      * @var string
      */
-    protected $instanceId;
+    protected string $region;
+
+    /**
+     * @var string|null
+     */
+    protected ?string $instanceId;
 
     /**
      * @var Backoff 
      */
-    private $backoff;
+    private Backoff $backoff;
 
     /**
      * @var SecretsManagerClient
      */
-    private $secretsManager;
+    private SecretsManagerClient $secretsManager;
 
     /**
      * @var Logger
      */
-    private $logger;
+    private Logger $logger;
 
     /**
      * @param string $encryption_key
      * @param array $cloudWatchConfig - [string cloudwatch_group, string application_name, int retention, array tags]
+     * @param string $region
      * @param bool $use_cache
+     * @throws Exception
      */
-    public function __construct(string $encryption_key, array $cloudWatchConfig, bool $use_cache = true)
+    public function __construct(string $encryption_key, array $cloudWatchConfig, string $region = 'us-west-2', bool $use_cache = true)
     {
         $this->setEncryptionKey($encryption_key);
         $this->setUseCache($use_cache);
+        $this->setRegion($region);
         $this->setInstanceId();
         
         // Init STS\Backoff\Backoff
@@ -106,6 +113,22 @@ abstract class AccessManager
     }
 
     /**
+     * @param string $string
+     */
+    public function setRegion(string $string): void
+    {
+        $this->region = $string;
+    }
+
+    /**
+     * @return string
+     */
+    public function getRegion(): string
+    {
+        return $this->region;
+    }
+
+    /**
      * Set the instance id used for logging
      */
     public function setInstanceId(): void
@@ -126,8 +149,7 @@ abstract class AccessManager
      */
     private function setBackoff(): void
     {
-        if (!$this->backoff)
-            $this->backoff = new Backoff($this->maxRetryAttempts, 'exponential', null, true);
+        $this->backoff = new Backoff($this->maxRetryAttempts, 'exponential', null, true);
     }
 
     /**
@@ -140,14 +162,14 @@ abstract class AccessManager
 
     /**
      * Init SecretsManagerClient
+     * @return void
      */
     private function setSecretsManager(): void
     {
-        if (!$this->secretsManager)
-            $this->secretsManager = new SecretsManagerClient([
-                'version' => '2017-10-17',
-                'region' => 'us-west-2', // ToDo: make variable
-            ]);
+        $this->secretsManager = new SecretsManagerClient([
+            'version' => '2017-10-17',
+            'region' => $this->getRegion(),
+        ]);
     }
 
     /**
@@ -165,16 +187,14 @@ abstract class AccessManager
      */
     private function setLogger(array $cloudWatchConfig): void
     {
-        if (!$this->logger) {
-            $cloudWatchConfig['sdk'] = [
-                'version' => 'latest', // ToDo: lock a version
-                'region' => 'us-west-2', // ToDo: will need to be variable
-            ];
+        $cloudWatchConfig['sdk'] = [
+            'version' => 'latest',
+            'region' => $this->getRegion(),
+        ];
 
-            $cloudWatchConfig['instance_id'] = $this->getInstanceId();
+        $cloudWatchConfig['instance_id'] = $this->getInstanceId();
 
-            $this->logger = CloudWatchLoggerFactory::create($cloudWatchConfig);
-        }
+        $this->logger = CloudWatchLoggerFactory::create($cloudWatchConfig);
     }
 
     /**
@@ -308,25 +328,25 @@ abstract class AccessManager
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 return null;
             }
-            if ($error == 'InternalServiceErrorException') {
+            elseif ($error == 'InternalServiceErrorException') {
                 // An error occurred on the server side.
                 // Handle the exception here, and/or rethrow as needed.
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 return null;
             }
-            if ($error == 'InvalidParameterException') {
+            elseif ($error == 'InvalidParameterException') {
                 // You provided an invalid value for a parameter.
                 // Handle the exception here, and/or rethrow as needed.
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 return null;
             }
-            if ($error == 'InvalidRequestException') {
+            elseif ($error == 'InvalidRequestException') {
                 // You provided a parameter value that is not valid for the current state of the resource.
                 // Handle the exception here, and/or rethrow as needed.
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 return null;
             }
-            if ($error == 'ResourceNotFoundException') {
+            elseif ($error == 'ResourceNotFoundException') {
                 // We can't find the resource that you asked for.
                 // Handle the exception here, and/or rethrow as needed.
                 $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
@@ -335,7 +355,7 @@ abstract class AccessManager
 
             $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
             return null;
-            
+
         } catch (Exception $e) {
             $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
             return null;

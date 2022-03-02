@@ -14,47 +14,47 @@ abstract class AccessManager
     /**
      * @var int
      */
-    protected int $maxRetryAttempts = 5;
+    protected $maxRetryAttempts = 5;
 
     /**
      * @var string
      */
-    private string $openSslCipherAlgo = 'AES-256-GCM';
+    private $openSslCipherAlgo = 'AES-256-GCM';
 
     /**
      * @var string
      */
-    private string $encryptionKey;
+    private $encryptionKey;
 
     /**
      * @var bool
      */
-    protected bool $useCache = true;
+    protected $useCache = true;
 
     /**
      * @var string
      */
-    protected string $region;
+    protected $region;
 
     /**
      * @var string|null
      */
-    protected ?string $instanceId;
+    protected $instanceId;
 
     /**
      * @var Backoff 
      */
-    private Backoff $backoff;
+    private $backoff;
 
     /**
      * @var SecretsManagerClient
      */
-    private SecretsManagerClient $secretsManager;
+    private $secretsManager;
 
     /**
      * @var Logger
      */
-    private Logger $logger;
+    private $logger;
 
     /**
      * @param string $encryption_key

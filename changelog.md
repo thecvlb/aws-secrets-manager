@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 ### Fixed
 
+## [1.5.0] - 2022-03-02
+### Added
+- add php 7.2 dependency
+### Changed
+- removed property type declarations
+
 ## [1.4.3] - 2022-02-15
 ### Changed
 - added $region arg to constructor so aws region can be changed

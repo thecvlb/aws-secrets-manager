@@ -2,8 +2,8 @@
     "name": "thecvlb/aws-secrets-manager",
     "description": "Add AWS managed secrets to your project.",
     "require": {
+        "php": "^7.2",
         "aws/aws-sdk-php": "^3.190",
-        "ext-json": "*",
         "ext-openssl": "*",
         "maxbanton/cwh": "^2.0",
         "monolog/monolog": "^2.3",

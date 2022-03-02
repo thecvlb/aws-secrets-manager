@@ -12,7 +12,7 @@ class AccessManagerTest extends TestCase
     /**
      * @var string
      */
-    protected $ip = '8.8.8.8';
+    protected string $ip = '8.8.8.8';
 
     protected function setServerAddr(): void
     {

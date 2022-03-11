@@ -37,11 +37,6 @@ abstract class AccessManager
     protected $region;
 
     /**
-     * @var string|null
-     */
-    protected $instanceId;
-
-    /**
      * @var Backoff 
      */
     private $backoff;
@@ -52,32 +47,22 @@ abstract class AccessManager
     private $secretsManager;
 
     /**
-     * @var Logger
-     */
-    private $logger;
-
-    /**
      * @param string $encryption_key
-     * @param array $cloudWatchConfig - [string cloudwatch_group, string application_name, int retention, array tags]
      * @param string $region
      * @param bool $use_cache
      * @throws Exception
      */
-    public function __construct(string $encryption_key, array $cloudWatchConfig, string $region = 'us-west-2', bool $use_cache = true)
+    public function __construct(string $encryption_key, string $region = 'us-west-2', bool $use_cache = true)
     {
         $this->setEncryptionKey($encryption_key);
         $this->setUseCache($use_cache);
         $this->setRegion($region);
-        $this->setInstanceId();
-        
+
         // Init STS\Backoff\Backoff
         $this->setBackoff();
 
         // Init SecretsManagerClient
         $this->setSecretsManager();
-
-        // Init Monolog\Logger with CloudWatch
-        $this->setLogger($cloudWatchConfig);
     }
 
     /**
@@ -129,22 +114,6 @@ abstract class AccessManager
     }
 
     /**
-     * Set the instance id used for logging
-     */
-    public function setInstanceId(): void
-    {
-        $this->instanceId = $this->findInstanceId();
-    }
-
-    /**
-     * @return string
-     */
-    public function getInstanceId(): ?string
-    {
-        return $this->instanceId;
-    }
-
-    /**
      * Init the Backoff object
      */
     private function setBackoff(): void
@@ -181,23 +150,6 @@ abstract class AccessManager
     }
 
     /**
-     * Init Monolog\Logger using a CloudWatch handler
-     * @param array $cloudWatchConfig - [string cloudwatch_group, string application_name, int retention, array tags]
-     * @throws Exception
-     */
-    private function setLogger(array $cloudWatchConfig): void
-    {
-        $cloudWatchConfig['sdk'] = [
-            'version' => 'latest',
-            'region' => $this->getRegion(),
-        ];
-
-        $cloudWatchConfig['instance_id'] = $this->getInstanceId();
-
-        $this->logger = CloudWatchLoggerFactory::create($cloudWatchConfig);
-    }
-
-    /**
      * Get value for the $key from cache or AWS SecretsManager service
      * @param string $secretName
      * @param string|null $key
@@ -223,7 +175,7 @@ abstract class AccessManager
 
                 // If no result found
                 if (!$result) {
-                    $this->logAccess(Logger::CRITICAL, "Unable to find value for secret", ['secretName' => $secretName]);
+                    //$this->logAccess(Logger::CRITICAL, "Unable to find value for secret", ['secretName' => $secretName]);
                     return null;
                 }
 
@@ -233,16 +185,16 @@ abstract class AccessManager
 
                     // If key's value not found
                     if (!$result) {
-                        $this->logAccess(Logger::CRITICAL, 'Key not found in value', ['secretName' => $secretName, 'key' => $key]);
+                        //$this->logAccess(Logger::CRITICAL, 'Key not found in value', ['secretName' => $secretName, 'key' => $key]);
                         return null;
                     }
                 }
 
                 // Log access
-                $this->logAccess(Logger::INFO, 'Secret Accessed', ['secret' => $secretName, 'key' => $key]);
+                //$this->logAccess(Logger::INFO, 'Secret Accessed', ['secret' => $secretName, 'key' => $key]);
 
             } catch (Exception $e) {
-                $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
+                //$this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 return null;
             }
         }
@@ -325,39 +277,39 @@ abstract class AccessManager
             if ($error == 'DecryptionFailureException') {
                 // Secrets Manager can't decrypt the protected secret text using the provided AWS KMS key.
                 // Handle the exception here, and/or rethrow as needed.
-                $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
+                //$this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 return null;
             }
             elseif ($error == 'InternalServiceErrorException') {
                 // An error occurred on the server side.
                 // Handle the exception here, and/or rethrow as needed.
-                $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
+                //$this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 return null;
             }
             elseif ($error == 'InvalidParameterException') {
                 // You provided an invalid value for a parameter.
                 // Handle the exception here, and/or rethrow as needed.
-                $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
+                //$this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 return null;
             }
             elseif ($error == 'InvalidRequestException') {
                 // You provided a parameter value that is not valid for the current state of the resource.
                 // Handle the exception here, and/or rethrow as needed.
-                $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
+                //$this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 return null;
             }
             elseif ($error == 'ResourceNotFoundException') {
                 // We can't find the resource that you asked for.
                 // Handle the exception here, and/or rethrow as needed.
-                $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
+                //$this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
                 return null;
             }
 
-            $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
+            //$this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
             return null;
 
         } catch (Exception $e) {
-            $this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
+            //$this->logAccess(Logger::CRITICAL, $e->getMessage(), $e->getTrace());
             return null;
         }
 
@@ -439,68 +391,6 @@ abstract class AccessManager
     }
 
     /**
-     * Log event to CloudWatch
-     * @param int $level
-     * @param string $message
-     * @param array $params
-     */
-    protected function logAccess(int $level, string $message, array $params): void
-    {
-        $logParams = array_merge($this->logParams(), $params);
-
-        switch ($level)
-        {
-            case Logger::DEBUG:
-                $this->logger->debug($message, $logParams);
-                break;
-            case Logger::INFO:
-                $this->logger->info($message, $logParams);
-                break;
-            case Logger::NOTICE:
-                $this->logger->notice($message, $logParams);
-                break;
-            case Logger::WARNING:
-                $this->logger->warning($message, $logParams);
-                break;
-            case Logger::CRITICAL:
-                $this->logger->critical($message, $logParams);
-                break;
-            case Logger::ALERT:
-                $this->logger->alert($message, $logParams);
-                break;
-            case Logger::EMERGENCY:
-                $this->logger->emergency($message, $logParams);
-                break;
-            default:
-                $this->logger->log(000, $message, $logParams);
-        }
-    }
-
-    /**
-     * Find the instance-id from the AWS resource or use the server IP
-     * @return string|null
-     */
-    protected function findInstanceId(): ?string
-    {
-        if ($_SERVER && isset($_SERVER['SERVER_ADDR']))
-            $instance_id = $_SERVER['SERVER_ADDR'];
-        else
-            $instance_id = $this->getIpFromShell();
-
-        return $instance_id;
-    }
-
-    /**
-     * Get ip from hostname
-     * @return string|null
-     */
-    protected function getIpFromShell(): ?string
-    {
-        $ips = explode(' ', shell_exec('hostname -I'));
-        return $ips[0] ?? null;
-    }
-
-    /**
      * Define extraction from cache service in extending class
      * @param string $key
      * @return string|null
@@ -521,12 +411,4 @@ abstract class AccessManager
      * @return int|null
      */
     abstract protected function clearFromCache(array $keys): ?int;
-
-    /**
-     * Define method to return additional params to be added to log
-     * This allows for additional, customized log info per application
-     * e.g. user_id, username, etc
-     * @return array
-     */
-    abstract protected function logParams(): array;
 }

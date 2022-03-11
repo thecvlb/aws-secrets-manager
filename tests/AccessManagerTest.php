@@ -30,21 +30,8 @@ class AccessManagerTest extends TestCase
     protected function getMockedAccessManager(): \PHPUnit\Framework\MockObject\MockObject
     {
         return $this->getMockBuilder('CVLB\AccessManager\AccessManager')
-            ->setConstructorArgs(['encryptme', $this->loggerConfig()])
+            ->setConstructorArgs(['encryptme'])
             ->getMockForAbstractClass();
-    }
-
-    /**
-     * @return array
-     */
-    protected function loggerConfig(): array
-    {
-        return [
-            'application_name' => str_replace(' ', '', 'PHP Unit Test'),
-            'cloudwatch_group' => 'cloudtrail-logs',
-            'retention' => 14,
-            'tags' => []
-        ];
     }
 
     /**
@@ -152,7 +139,7 @@ class AccessManagerTest extends TestCase
         $secretJson = json_encode($secret);
         $this->setServerAddr();
         $obj = $this->getMockBuilder('CVLB\AccessManager\AccessManager')
-            ->setConstructorArgs(['encryptme', $this->loggerConfig()])
+            ->setConstructorArgs(['encryptme'])
             ->onlyMethods(['fromCache'])
             ->getMockForAbstractClass();
 
@@ -172,7 +159,7 @@ class AccessManagerTest extends TestCase
         $secretJson = json_encode($secret);
         $this->setServerAddr();
         $obj = $this->getMockBuilder('CVLB\AccessManager\AccessManager')
-            ->setConstructorArgs(['encryptme', $this->loggerConfig()])
+            ->setConstructorArgs(['encryptme'])
             ->onlyMethods(['fromCache'])
             ->getMockForAbstractClass();
 
@@ -182,33 +169,5 @@ class AccessManagerTest extends TestCase
             ->willReturn($secretJson);
 
         $this->assertEquals($value, $obj->access('mySecret', $key));
-    }
-
-    public function testFindInstanceIdFromServerAddr()
-    {
-        $this->setServerAddr();
-        $obj = $this->getMockedAccessManager();
-
-        $this->assertEquals($this->ip, $obj->getInstanceId());
-    }
-
-    public function testFindInstanceIdFromHostname()
-    {
-        $ip = '1.1.1.1';
-        $this->unsetServerAddr();
-        $obj = $this->getMockBuilder('CVLB\AccessManager\AccessManager')
-            ->setConstructorArgs(['encryptme', $this->loggerConfig()])
-            ->onlyMethods(['getIpFromShell'])
-            ->getMockForAbstractClass();
-
-        // Mock return of getIpFromShell()
-        $obj->expects($this->any())
-            ->method("getIpFromShell")
-            ->willReturn($ip);
-
-        // Invoke setInstanceId() in order to call getIpFromShell()
-        $obj->setInstanceId();
-
-        $this->assertEquals($ip, $obj->getInstanceId());
     }
 }

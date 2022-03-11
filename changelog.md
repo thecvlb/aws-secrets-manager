@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 ### Fixed
 
+## [1.6.0] - 2022-03-1-0
+### Changed
+- removed logging in prep for svc logging
+
 ## [1.5.0] - 2022-03-02
 ### Added
 - add php 7.2 dependency

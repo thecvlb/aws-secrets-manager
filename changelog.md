@@ -7,7 +7,11 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 ### Fixed
 
-## [1.6.0] - 2022-03-1-0
+## [1.7.0] - 2023-03-23
+### Added
+- Added support for PHP 8
+
+## [1.6.0] - 2022-03-10
 ### Changed
 - removed logging in prep for svc logging
 

@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 ### Fixed
 
+## [1.8.0] - 2024-09-25
+### Added
+- Upgraded Monolog to 3.7
+
 ## [1.7.0] - 2023-03-23
 ### Added
 - Added support for PHP 8

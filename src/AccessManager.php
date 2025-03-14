@@ -210,6 +210,7 @@ abstract class AccessManager
      */
     public function getKeyFromSecret(string $secret, string $key): ?string
     {
+        $secret = stripslashes($secret);
         $secretArray = json_decode($secret, true);
         return $secretArray[$key] ?? null;
     }
